@@ -26,7 +26,6 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    if (session.role !== 'owner') return res.status(403).json({ error: 'Owner only' });
     const { name, brand = '', category = 'General', cost_price = 0, selling_price = 0, notes = '', variants = [] } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
 
