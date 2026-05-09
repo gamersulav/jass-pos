@@ -9,7 +9,7 @@ const C = {
 const Rs = n => `Rs ${Number(n || 0).toLocaleString()}`;
 const SIZES = [35,36,37,38,39,40,41,42,43,44,45];
 const CATEGORIES = ['Sports','Classic','Casual','Formal','Running','Kids','General'];
-const PAYMENT = ['Cash','eSewa','Bank Transfer','Fonepay'];
+const PAYMENT = ['Cash','Bank','eSewa Pranis','eSewa Saharsh','eSewa Sulav'];
 
 function Btn({ onClick, children, color = C.amber, style = {}, disabled = false }) {
   return (
@@ -597,7 +597,7 @@ function CashBalanceTab() {
   const [adjEdit, setAdjEdit] = useState({});
   const [msg, setMsg] = useState('');
 
-  const METHODS = ['Cash','eSewa','Bank Transfer','Fonepay'];
+  const METHODS = ['Cash','Bank','eSewa Pranis','eSewa Saharsh','eSewa Sulav'];
 
   useEffect(() => {
     fetch(`/api/cash-balance?date=${date}`).then(r=>r.json()).then(setData);

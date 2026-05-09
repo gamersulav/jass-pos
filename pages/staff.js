@@ -8,7 +8,7 @@ const C = {
 };
 const Rs = n => `Rs ${Number(n || 0).toLocaleString()}`;
 const SIZES = [35,36,37,38,39,40,41,42,43,44,45];
-const PAYMENT = ['Cash','eSewa','Bank Transfer','Fonepay','Credit'];
+const PAYMENT = ['Cash','Bank','eSewa Pranis','eSewa Saharsh','eSewa Sulav','Credit'];
 
 function Btn({ onClick, children, color = C.amber, style = {}, disabled = false }) {
   return (
@@ -425,7 +425,7 @@ function ExpensesTab() {
         <Input label="Description *" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} />
         <Input label="Amount *" type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} />
         <Select label="Payment Method" value={form.payment_method} onChange={e=>setForm(f=>({...f,payment_method:e.target.value}))}>
-          {['Cash','eSewa','Bank Transfer','Fonepay'].map(p=><option key={p}>{p}</option>)}
+          {['Cash','Bank','eSewa Pranis','eSewa Saharsh','eSewa Sulav'].map(p=><option key={p}>{p}</option>)}
         </Select>
         {msg && <p style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
         <Btn onClick={add} style={{ width:'100%' }}>Add Expense</Btn>

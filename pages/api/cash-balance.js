@@ -1,7 +1,7 @@
 import { getDb } from '../../lib/db';
 import { getSession } from '../../lib/auth';
 
-const METHODS = ['Cash', 'eSewa', 'Bank Transfer', 'Fonepay'];
+const METHODS = ['Cash', 'Bank', 'eSewa Pranis', 'eSewa Saharsh', 'eSewa Sulav'];
 
 function prevDateStr(dateStr) {
   const d = new Date(dateStr + 'T00:00:00Z');
