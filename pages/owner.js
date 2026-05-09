@@ -252,33 +252,44 @@ function ShoesTab() {
   const [shoes, setShoes] = useState([]);
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ name:'', brand:'', category:'General', cost_price:'', selling_price:'', notes:'', sizes:{} });
+  const [form, setForm] = useState({ name:'', brand:'', category:'General', cost_price:'', selling_price:'', notes:'' });
+  const [variants, setVariants] = useState([{ color:'', size:'', qty:'' }]);
   const [msg, setMsg] = useState('');
 
   const load = () => fetch('/api/shoes').then(r=>r.json()).then(setShoes);
   useEffect(() => { load(); }, []);
 
+  function updateVariant(i, field, val) { setVariants(v => v.map((r,j) => j===i ? {...r,[field]:val} : r)); }
+  function addVariantRow() { setVariants(v => [...v, { color:'', size:'', qty:'' }]); }
+  function removeVariantRow(i) { setVariants(v => v.filter((_,j) => j!==i)); }
+
   function startEdit(shoe) {
-    setEditing(shoe.id);
-    setForm({ name: shoe.name, brand: shoe.brand||'', category: shoe.category||'General', cost_price: shoe.cost_price, selling_price: shoe.selling_price, notes: shoe.notes||'', sizes: { ...shoe.sizes } });
-    setAdding(false);
+    setEditing(shoe.id); setAdding(false);
+    setForm({ name: shoe.name, brand: shoe.brand||'', category: shoe.category||'General', cost_price: shoe.cost_price, selling_price: shoe.selling_price, notes: shoe.notes||'' });
+    // Expand existing color/size/qty into rows
+    const rows = [];
+    Object.entries(shoe.colors || {}).forEach(([color, sizes]) => {
+      Object.entries(sizes).forEach(([size, qty]) => { if (Number(qty) > 0) rows.push({ color, size, qty: String(qty) }); });
+    });
+    setVariants(rows.length ? rows : [{ color:'', size:'', qty:'' }]);
   }
 
   function startAdd() {
     setAdding(true); setEditing(null);
-    setForm({ name:'', brand:'', category:'General', cost_price:'', selling_price:'', notes:'', sizes:{} });
+    setForm({ name:'', brand:'', category:'General', cost_price:'', selling_price:'', notes:'' });
+    setVariants([{ color:'', size:'', qty:'' }]);
   }
 
   async function save() {
     if (!form.name.trim()) return setMsg('Name required');
+    const validVariants = variants.filter(v => v.size && Number(v.qty) >= 0).map(v => ({ color: v.color||'', size: Number(v.size), qty: Number(v.qty) }));
     const url = adding ? '/api/shoes' : `/api/shoes/${editing}`;
     const method = adding ? 'POST' : 'PUT';
-    const body = { ...form, cost_price: Number(form.cost_price)||0, selling_price: Number(form.selling_price)||0, sizes: Object.fromEntries(Object.entries(form.sizes).map(([k,v]) => [k, Number(v)||0])) };
+    const body = { ...form, cost_price: Number(form.cost_price)||0, selling_price: Number(form.selling_price)||0, variants: validVariants };
     const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await r.json();
     if (!r.ok) return setMsg(data.error || 'Error');
-    setMsg(adding ? 'Added!' : 'Updated!'); setEditing(null); setAdding(false);
-    load();
+    setMsg(adding ? 'Added!' : 'Updated!'); setEditing(null); setAdding(false); load();
   }
 
   async function del(id) {
@@ -310,16 +321,24 @@ function ShoesTab() {
             <Input label="Selling Price" type="number" value={form.selling_price} onChange={e=>setForm(f=>({...f,selling_price:e.target.value}))} />
           </div>
           <div style={{ marginBottom:12 }}>
-            <label style={{ display:'block', fontSize:11, color:C.muted, marginBottom:8, textTransform:'uppercase', letterSpacing:1 }}>Sizes (quantity)</label>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-              {SIZES.map(sz => (
-                <div key={sz} style={{ textAlign:'center' }}>
-                  <div style={{ fontSize:11, color:C.muted, marginBottom:2 }}>{sz}</div>
-                  <input type="number" min="0" value={form.sizes[sz]||''} onChange={e=>setForm(f=>({...f,sizes:{...f.sizes,[sz]:e.target.value}}))}
-                    style={{ width:52, padding:'6px', background:'#1f2937', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, textAlign:'center', outline:'none' }} />
-                </div>
-              ))}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+              <label style={{ fontSize:11, color:C.muted, textTransform:'uppercase', letterSpacing:1 }}>Color / Size / Qty</label>
+              <Btn onClick={addVariantRow} color="#374151" style={{ color:C.text, padding:'4px 10px', fontSize:12 }}>+ Row</Btn>
             </div>
+            {variants.map((v, i) => (
+              <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 90px 80px 32px', gap:6, marginBottom:6 }}>
+                <input placeholder="Color (e.g. Red)" value={v.color} onChange={e=>updateVariant(i,'color',e.target.value)}
+                  style={{ padding:'7px 10px', background:'#1f2937', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, outline:'none' }} />
+                <select value={v.size} onChange={e=>updateVariant(i,'size',e.target.value)}
+                  style={{ padding:'7px 6px', background:'#1f2937', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, outline:'none' }}>
+                  <option value="">Sz</option>
+                  {SIZES.map(sz=><option key={sz} value={sz}>{sz}</option>)}
+                </select>
+                <input type="number" min="0" placeholder="Qty" value={v.qty} onChange={e=>updateVariant(i,'qty',e.target.value)}
+                  style={{ padding:'7px 8px', background:'#1f2937', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, outline:'none' }} />
+                <button onClick={() => removeVariantRow(i)} style={{ background:'none', border:'none', color:C.red, cursor:'pointer', fontSize:18 }}>×</button>
+              </div>
+            ))}
           </div>
           <Input label="Notes" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} />
           {msg && <p style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
@@ -331,33 +350,42 @@ function ShoesTab() {
       )}
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:12 }}>
-        {shoes.map(shoe => (
-          <Card key={shoe.id}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
-              <div>
-                <div style={{ fontWeight:700, color:C.amber, fontSize:16 }}>{shoe.name}</div>
-                {shoe.brand && <div style={{ fontSize:12, color:C.muted }}>{shoe.brand}</div>}
-                <div style={{ fontSize:12, color:C.cyan, marginTop:2 }}>{shoe.category}</div>
+        {shoes.map(shoe => {
+          const colorKeys = Object.keys(shoe.colors || {});
+          return (
+            <Card key={shoe.id}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                <div>
+                  <div style={{ fontWeight:700, color:C.amber, fontSize:16 }}>{shoe.name}</div>
+                  {shoe.brand && <div style={{ fontSize:12, color:C.muted }}>{shoe.brand}</div>}
+                  <div style={{ fontSize:12, color:C.cyan, marginTop:2 }}>{shoe.category}</div>
+                </div>
+                <div style={{ display:'flex', gap:6 }}>
+                  <Btn onClick={() => startEdit(shoe)} color="#374151" style={{ color:C.text, padding:'6px 10px' }}>Edit</Btn>
+                  <Btn onClick={() => del(shoe.id)} color={C.red} style={{ padding:'6px 10px' }}>Del</Btn>
+                </div>
               </div>
-              <div style={{ display:'flex', gap:6 }}>
-                <Btn onClick={() => startEdit(shoe)} color="#374151" style={{ color:C.text, padding:'6px 10px' }}>Edit</Btn>
-                <Btn onClick={() => del(shoe.id)} color={C.red} style={{ padding:'6px 10px' }}>Del</Btn>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                <span style={{ fontSize:12, color:C.muted }}>Cost: {Rs(shoe.cost_price)}</span>
+                <span style={{ fontSize:14, fontWeight:700 }}>{Rs(shoe.selling_price)}</span>
               </div>
-            </div>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-              <span style={{ fontSize:12, color:C.muted }}>Cost: {Rs(shoe.cost_price)}</span>
-              <span style={{ fontSize:14, fontWeight:700 }}>{Rs(shoe.selling_price)}</span>
-            </div>
-            <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>Stock: {shoe.total_stock} pairs</div>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-              {SIZES.filter(sz => Number(shoe.sizes?.[sz]) > 0).map(sz => (
-                <span key={sz} style={{ padding:'2px 8px', background: Number(shoe.sizes[sz]) <= 2 ? '#ef444422' : '#f59e0b22', color: Number(shoe.sizes[sz]) <= 2 ? C.red : C.amber, borderRadius:4, fontSize:12, border:`1px solid ${Number(shoe.sizes[sz]) <= 2 ? '#ef444444' : '#f59e0b44'}` }}>
-                  {sz}: {shoe.sizes[sz]}
-                </span>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>Stock: {shoe.total_stock} pairs</div>
+              {colorKeys.map(color => (
+                <div key={color} style={{ marginBottom:8 }}>
+                  {color && <div style={{ fontSize:12, color:C.cyan, fontWeight:600, marginBottom:4 }}>{color}</div>}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                    {SIZES.filter(sz => Number(shoe.colors[color]?.[sz]) > 0).map(sz => (
+                      <span key={sz} style={{ padding:'2px 8px', background: Number(shoe.colors[color][sz]) <= 2 ? '#ef444422' : '#f59e0b22', color: Number(shoe.colors[color][sz]) <= 2 ? C.red : C.amber, borderRadius:4, fontSize:12, border:`1px solid ${Number(shoe.colors[color][sz]) <= 2 ? '#ef444444' : '#f59e0b44'}` }}>
+                        {sz}: {shoe.colors[color][sz]}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               ))}
-            </div>
-          </Card>
-        ))}
+              {!colorKeys.length && <span style={{ fontSize:12, color:C.red }}>No stock</span>}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

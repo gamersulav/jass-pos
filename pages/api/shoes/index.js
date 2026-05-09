@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const shoes = await db.query(`
       SELECT s.*,
-        GROUP_CONCAT(ss.size || ':' || ss.quantity ORDER BY ss.size) as sizes_raw,
+        GROUP_CONCAT(ss.color || '~' || ss.size || '~' || ss.quantity ORDER BY ss.color, ss.size) as sizes_raw,
         COALESCE(SUM(ss.quantity), 0) as total_stock
       FROM shoes s
       LEFT JOIN shoe_sizes ss ON ss.shoe_id = s.id
@@ -20,16 +20,14 @@ export default async function handler(req, res) {
     `);
     return res.json(shoes.map(s => ({
       ...s,
-      sizes: s.sizes_raw
-        ? Object.fromEntries(s.sizes_raw.split(',').map(p => { const [k,v] = p.split(':'); return [k, Number(v)]; }))
-        : {},
+      colors: parseSizesRaw(s.sizes_raw),
       cost_price: session.role === 'owner' ? s.cost_price : undefined,
     })));
   }
 
   if (req.method === 'POST') {
     if (session.role !== 'owner') return res.status(403).json({ error: 'Owner only' });
-    const { name, brand = '', category = 'General', cost_price = 0, selling_price = 0, notes = '', sizes = {} } = req.body;
+    const { name, brand = '', category = 'General', cost_price = 0, selling_price = 0, notes = '', variants = [] } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
 
     const { lastId } = await db.run(
@@ -37,11 +35,11 @@ export default async function handler(req, res) {
       [name.trim(), brand, category, Number(cost_price), Number(selling_price), notes, session.id]
     );
 
-    for (const [size, qty] of Object.entries(sizes)) {
-      if (Number(qty) > 0) {
+    for (const { color = '', size, qty } of variants) {
+      if (Number(qty) > 0 && size) {
         await db.run(
-          'INSERT INTO shoe_sizes (shoe_id,size,quantity) VALUES (?,?,?) ON CONFLICT(shoe_id,size) DO UPDATE SET quantity=quantity+excluded.quantity',
-          [lastId, Number(size), Number(qty)]
+          'INSERT INTO shoe_sizes (shoe_id,color,size,quantity) VALUES (?,?,?,?) ON CONFLICT(shoe_id,color,size) DO UPDATE SET quantity=quantity+excluded.quantity',
+          [lastId, color, Number(size), Number(qty)]
         );
       }
     }
@@ -50,4 +48,19 @@ export default async function handler(req, res) {
   }
 
   res.status(405).end();
+}
+
+function parseSizesRaw(raw) {
+  if (!raw) return {};
+  const colors = {};
+  raw.split(',').forEach(p => {
+    const parts = p.split('~');
+    if (parts.length < 3) return;
+    const color = parts[0];
+    const size = parts[1];
+    const qty = Number(parts[2]);
+    if (!colors[color]) colors[color] = {};
+    colors[color][size] = qty;
+  });
+  return colors;
 }

@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     // Verify stock
     for (const it of items) {
       if (it.item_type === 'shoe') {
-        const sz = await db.queryOne('SELECT quantity FROM shoe_sizes WHERE shoe_id=? AND size=?', [it.shoe_id, it.shoe_size]);
+        const sz = await db.queryOne('SELECT quantity FROM shoe_sizes WHERE shoe_id=? AND color=? AND size=?', [it.shoe_id, it.shoe_color ?? '', it.shoe_size]);
         if (!sz || Number(sz.quantity) < Number(it.quantity)) return res.status(400).json({ error: `Insufficient stock: ${it.item_name} size ${it.shoe_size}` });
       } else {
         const acc = await db.queryOne('SELECT stock FROM accessories WHERE id=?', [it.accessory_id]);
@@ -66,12 +66,12 @@ export default async function handler(req, res) {
         discLeft -= itemDisc;
 
         await tx.run(
-          'INSERT INTO sale_items (sale_id,item_type,shoe_id,shoe_size,accessory_id,item_name,quantity,unit_price,cost_price,item_discount) VALUES (?,?,?,?,?,?,?,?,?,?)',
-          [lastId, it.item_type, it.shoe_id || null, it.shoe_size || null, it.accessory_id || null, it.item_name, Number(it.quantity), Number(it.unit_price), Number(it.cost_price), itemDisc]
+          'INSERT INTO sale_items (sale_id,item_type,shoe_id,shoe_color,shoe_size,accessory_id,item_name,quantity,unit_price,cost_price,item_discount) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          [lastId, it.item_type, it.shoe_id || null, it.shoe_color ?? '', it.shoe_size || null, it.accessory_id || null, it.item_name, Number(it.quantity), Number(it.unit_price), Number(it.cost_price), itemDisc]
         );
 
         if (it.item_type === 'shoe') {
-          await tx.run('UPDATE shoe_sizes SET quantity=quantity-? WHERE shoe_id=? AND size=?', [Number(it.quantity), it.shoe_id, it.shoe_size]);
+          await tx.run('UPDATE shoe_sizes SET quantity=quantity-? WHERE shoe_id=? AND color=? AND size=?', [Number(it.quantity), it.shoe_id, it.shoe_color ?? '', it.shoe_size]);
         } else {
           await tx.run('UPDATE accessories SET stock=stock-? WHERE id=?', [Number(it.quantity), it.accessory_id]);
         }

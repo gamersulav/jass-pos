@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   const id = Number(req.query.id);
 
   if (req.method === 'PUT') {
-    const { name, brand, category, cost_price, selling_price, notes, sizes } = req.body;
+    const { name, brand, category, cost_price, selling_price, notes, variants } = req.body;
     const shoe = await db.queryOne('SELECT * FROM shoes WHERE id=?', [id]);
     if (!shoe) return res.status(404).json({ error: 'Not found' });
 
@@ -30,17 +30,18 @@ export default async function handler(req, res) {
 
     if (fields.length) { vals.push(id); await db.run(`UPDATE shoes SET ${fields.join(',')} WHERE id=?`, vals); }
 
-    if (sizes && typeof sizes === 'object') {
-      for (const [size, qty] of Object.entries(sizes)) {
-        const cur = await db.queryOne('SELECT quantity FROM shoe_sizes WHERE shoe_id=? AND size=?', [id, Number(size)]);
+    if (Array.isArray(variants)) {
+      for (const { color = '', size, qty } of variants) {
+        if (!size) continue;
+        const cur = await db.queryOne('SELECT quantity FROM shoe_sizes WHERE shoe_id=? AND color=? AND size=?', [id, color, Number(size)]);
         const newQty = Number(qty);
         if (cur) {
           if (cur.quantity !== newQty) {
-            await logEdit(db, session, id, shoe.name, `size_${size}`, cur.quantity, newQty);
-            await db.run('UPDATE shoe_sizes SET quantity=? WHERE shoe_id=? AND size=?', [newQty, id, Number(size)]);
+            await logEdit(db, session, id, shoe.name, `${color || 'default'}_sz${size}`, cur.quantity, newQty);
+            await db.run('UPDATE shoe_sizes SET quantity=? WHERE shoe_id=? AND color=? AND size=?', [newQty, id, color, Number(size)]);
           }
-        } else {
-          await db.run('INSERT INTO shoe_sizes (shoe_id,size,quantity) VALUES (?,?,?)', [id, Number(size), newQty]);
+        } else if (newQty > 0) {
+          await db.run('INSERT INTO shoe_sizes (shoe_id,color,size,quantity) VALUES (?,?,?,?)', [id, color, Number(size), newQty]);
         }
       }
     }

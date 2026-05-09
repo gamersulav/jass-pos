@@ -19,21 +19,21 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { item_type = 'shoe', shoe_id, accessory_id, item_name, size, quantity, unit_cost = 0, direction = 'in', notes = '' } = req.body;
+    const { item_type = 'shoe', shoe_id, accessory_id, item_name, color = '', size, quantity, unit_cost = 0, direction = 'in', notes = '' } = req.body;
     if (!item_name?.trim()) return res.status(400).json({ error: 'Item name required' });
     if (!quantity || Number(quantity) <= 0) return res.status(400).json({ error: 'Quantity must be positive' });
 
     await db.tx(async (tx) => {
       await tx.run(
-        'INSERT INTO stock_entries (item_type,shoe_id,accessory_id,item_name,size,quantity,unit_cost,direction,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)',
-        [item_type, shoe_id || null, accessory_id || null, item_name.trim(), size || null, Number(quantity), Number(unit_cost), direction, notes, session.id]
+        'INSERT INTO stock_entries (item_type,shoe_id,accessory_id,item_name,color,size,quantity,unit_cost,direction,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        [item_type, shoe_id || null, accessory_id || null, item_name.trim(), color, size || null, Number(quantity), Number(unit_cost), direction, notes, session.id]
       );
 
       if (item_type === 'shoe' && shoe_id && size) {
         const delta = direction === 'in' ? Number(quantity) : -Number(quantity);
         await tx.run(
-          'INSERT INTO shoe_sizes (shoe_id,size,quantity) VALUES (?,?,?) ON CONFLICT(shoe_id,size) DO UPDATE SET quantity=quantity+?',
-          [Number(shoe_id), Number(size), Math.max(0, delta), delta]
+          'INSERT INTO shoe_sizes (shoe_id,color,size,quantity) VALUES (?,?,?,?) ON CONFLICT(shoe_id,color,size) DO UPDATE SET quantity=quantity+?',
+          [Number(shoe_id), color, Number(size), Math.max(0, delta), delta]
         );
       } else if (item_type === 'accessory' && accessory_id) {
         const delta = direction === 'in' ? Number(quantity) : -Number(quantity);
