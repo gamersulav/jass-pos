@@ -215,17 +215,33 @@ function StockTab() {
   const [shoes, setShoes] = useState([]);
   const [accessories, setAccessories] = useState([]);
   const [entries, setEntries] = useState([]);
-  const [form, setForm] = useState({ item_type:'shoe', shoe_id:'', accessory_id:'', color:'', size:'', quantity:'', notes:'' });
+  const [knownSuppliers, setKnownSuppliers] = useState([]);
+  const [supplierPrice, setSupplierPrice] = useState(null);
+  const [form, setForm] = useState({ item_type:'shoe', shoe_id:'', accessory_id:'', color:'', size:'', quantity:'', notes:'', supplier_name:'' });
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
     fetch('/api/shoes').then(r=>r.json()).then(setShoes);
     fetch('/api/accessories').then(r=>r.json()).then(setAccessories);
     fetch('/api/stock').then(r=>r.json()).then(setEntries);
+    fetch('/api/supplier-prices').then(r=>r.json()).then(d => setKnownSuppliers(d.suppliers || []));
   }, []);
+
+  // Look up price when shoe + supplier both selected
+  useEffect(() => {
+    if (form.item_type === 'shoe' && form.shoe_id && form.supplier_name.trim()) {
+      fetch('/api/supplier-prices').then(r=>r.json()).then(d => {
+        const match = d.prices.find(p => p.shoe_id === Number(form.shoe_id) && p.supplier_name === form.supplier_name.trim());
+        setSupplierPrice(match || null);
+      });
+    } else {
+      setSupplierPrice(null);
+    }
+  }, [form.shoe_id, form.supplier_name, form.item_type]);
 
   async function addStock() {
     if (!form.quantity || Number(form.quantity) <= 0) return setMsg('Enter valid quantity');
+    if (form.item_type === 'shoe' && !form.supplier_name.trim()) return setMsg('Supplier name required');
     const shoe = form.item_type === 'shoe' ? shoes.find(s => s.id === Number(form.shoe_id)) : null;
     const acc = form.item_type === 'accessory' ? accessories.find(a => a.id === Number(form.accessory_id)) : null;
     const item_name = shoe ? shoe.name : acc ? acc.name : '';
@@ -236,26 +252,61 @@ function StockTab() {
       body: JSON.stringify({ ...form, shoe_id: form.shoe_id ? Number(form.shoe_id) : null, accessory_id: form.accessory_id ? Number(form.accessory_id) : null, color: form.color || '', size: form.size ? Number(form.size) : null, quantity: Number(form.quantity), item_name, direction:'in' }) });
     const data = await r.json();
     if (!r.ok) return setMsg(data.error || 'Error');
-    setMsg('Stock added!');
-    setForm(f => ({ ...f, quantity:'', notes:'' }));
+
+    if (data.needsPricing) {
+      setMsg('Stock added! ⚠️ Owner needs to set price for this supplier.');
+    } else if (data.priceApplied) {
+      setMsg('Stock added! Price auto-applied from supplier.');
+    } else {
+      setMsg('Stock added!');
+    }
+
+    setForm(f => ({ ...f, quantity:'', notes:'', size:'' }));
+    setSupplierPrice(null);
     fetch('/api/stock').then(r=>r.json()).then(setEntries);
     fetch('/api/shoes').then(r=>r.json()).then(setShoes);
-    fetch('/api/accessories').then(r=>r.json()).then(setAccessories);
+    fetch('/api/supplier-prices').then(r=>r.json()).then(d => setKnownSuppliers(d.suppliers || []));
   }
 
   const selShoe = shoes.find(s => s.id === Number(form.shoe_id));
   const curColorStock = selShoe?.colors?.[form.color] || {};
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'340px 1fr', gap:20 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'360px 1fr', gap:20 }}>
       <Card>
         <h3 style={{ color:C.amber, marginBottom:16 }}>Add Stock</h3>
-        <Select label="Type" value={form.item_type} onChange={e=>setForm(f=>({...f,item_type:e.target.value,shoe_id:'',accessory_id:'',color:'',size:''}))}>
+        <Select label="Type" value={form.item_type} onChange={e=>setForm(f=>({...f,item_type:e.target.value,shoe_id:'',accessory_id:'',color:'',size:'',supplier_name:''}))}>
           <option value="shoe">Shoe</option>
           <option value="accessory">Accessory</option>
         </Select>
         {form.item_type === 'shoe' ? (
           <>
+            <div style={{ marginBottom:12 }}>
+              <label style={{ display:'block', fontSize:11, color:C.muted, marginBottom:4, textTransform:'uppercase', letterSpacing:1 }}>Supplier *</label>
+              <input
+                list="supplier-list"
+                value={form.supplier_name}
+                onChange={e=>setForm(f=>({...f,supplier_name:e.target.value}))}
+                placeholder="Type or pick supplier name"
+                style={{ width:'100%', padding:'9px 12px', background:'#1f2937', border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:14, outline:'none' }}
+              />
+              <datalist id="supplier-list">
+                {knownSuppliers.map(s => <option key={s} value={s} />)}
+              </datalist>
+            </div>
+
+            {supplierPrice && (
+              <div style={{ background:'#10b98122', border:'1px solid #10b98144', borderRadius:8, padding:'8px 12px', marginBottom:12, fontSize:13 }}>
+                <div style={{ color:C.green, fontWeight:600 }}>Price found for this supplier</div>
+                <div style={{ color:C.muted, marginTop:2 }}>Selling: {Rs(supplierPrice.selling_price)}</div>
+              </div>
+            )}
+            {form.supplier_name.trim() && form.shoe_id && !supplierPrice && (
+              <div style={{ background:'#f59e0b11', border:'1px solid #f59e0b33', borderRadius:8, padding:'8px 12px', marginBottom:12, fontSize:13, color:C.amber }}>
+                No price set yet — owner will be notified
+              </div>
+            )}
+
             <Select label="Shoe" value={form.shoe_id} onChange={e=>setForm(f=>({...f,shoe_id:e.target.value,color:'',size:''}))}>
               <option value="">Select shoe</option>
               {shoes.map(s => <option key={s.id} value={s.id}>{s.name}{s.brand ? ` - ${s.brand}` : ''}</option>)}
@@ -274,7 +325,7 @@ function StockTab() {
         )}
         <Input label="Quantity" type="number" value={form.quantity} onChange={e=>setForm(f=>({...f,quantity:e.target.value}))} />
         <Input label="Notes" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} />
-        {msg && <p style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
+        {msg && <p style={{ color: msg.includes('⚠️') ? C.amber : msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
         <Btn onClick={addStock} style={{ width:'100%' }}>Add Stock</Btn>
       </Card>
 
@@ -287,6 +338,7 @@ function StockTab() {
                 <span style={{ fontWeight:600 }}>{e.item_name}</span>
                 {e.color && <span style={{ color:C.cyan, fontSize:12, marginLeft:8 }}>{e.color}</span>}
                 {e.size && <span style={{ color:C.muted, fontSize:12, marginLeft:8 }}>sz {e.size}</span>}
+                {e.supplier_name && <span style={{ color:C.amber, fontSize:12, marginLeft:8 }}>· {e.supplier_name}</span>}
               </div>
               <span style={{ color:C.green, fontWeight:700 }}>+{e.quantity}</span>
             </div>

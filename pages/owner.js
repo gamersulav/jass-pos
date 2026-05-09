@@ -863,11 +863,137 @@ function UsersTab({ currentUser }) {
   );
 }
 
+// ── Supplier Pricing Tab ──────────────────────────────────────────────────────
+function SupplierPricingTab({ onUnpricedCountChange }) {
+  const [data, setData] = useState({ prices: [], unpriced: [], suppliers: [] });
+  const [form, setForm] = useState({});
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(() => {
+    fetch('/api/supplier-prices').then(r=>r.json()).then(d => {
+      setData(d);
+      if (onUnpricedCountChange) onUnpricedCountChange(d.unpriced.length);
+    });
+  }, [onUnpricedCountChange]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const setField = (key, field, val) => setForm(f => ({...f, [key]: {...(f[key]||{}), [field]: val}}));
+
+  async function saveNew(supplier_name, shoe_id) {
+    const key = `${supplier_name}~${shoe_id}`;
+    const { cost_price = 0, selling_price = 0 } = form[key] || {};
+    const r = await fetch('/api/supplier-prices', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ supplier_name, shoe_id, cost_price: Number(cost_price), selling_price: Number(selling_price) }) });
+    if (!r.ok) { const d = await r.json(); return setMsg(d.error || 'Error saving'); }
+    setMsg('Saved!'); setTimeout(() => setMsg(''), 2000);
+    setForm(f => { const c = {...f}; delete c[key]; return c; });
+    load();
+  }
+
+  async function saveEdit() {
+    const r = await fetch('/api/supplier-prices', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ supplier_name: editForm.supplier_name, shoe_id: editForm.shoe_id, cost_price: Number(editForm.cost_price)||0, selling_price: Number(editForm.selling_price)||0 }) });
+    if (!r.ok) return setMsg('Error saving');
+    setMsg('Updated!'); setTimeout(() => setMsg(''), 2000);
+    setEditId(null); load();
+  }
+
+  async function del(id) {
+    if (!confirm('Remove this supplier price?')) return;
+    await fetch('/api/supplier-prices', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  const suppliers = Array.from(new Set(data.prices.map(p => p.supplier_name)));
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <h2 style={{ color:C.amber, fontSize:22 }}>Supplier Pricing</h2>
+        {msg && <span style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, fontWeight:600 }}>{msg}</span>}
+      </div>
+
+      {data.unpriced.length > 0 && (
+        <Card style={{ marginBottom:24, borderColor:'#f59e0b55' }}>
+          <h3 style={{ color:C.amber, marginBottom:4, fontSize:16 }}>Needs Pricing — {data.unpriced.length} combo{data.unpriced.length !== 1 ? 's' : ''}</h3>
+          <p style={{ color:C.muted, fontSize:12, marginBottom:16 }}>Set cost & selling price once per shoe model per supplier. Applies to all sizes automatically.</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {data.unpriced.map(u => {
+              const key = `${u.supplier_name}~${u.shoe_id}`;
+              const vals = form[key] || {};
+              return (
+                <div key={key} style={{ display:'grid', gridTemplateColumns:'1fr 150px 140px 140px auto', gap:10, alignItems:'center', padding:'10px 14px', background:'#1a2030', borderRadius:8, border:`1px solid #f59e0b33` }}>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:14 }}>{u.shoe_name}</div>
+                    <div style={{ fontSize:12, color:C.cyan }}>{u.supplier_name}</div>
+                    {u.brand && <div style={{ fontSize:11, color:C.muted }}>{u.brand}</div>}
+                  </div>
+                  <div style={{ fontSize:12, color:C.muted }}>Cost &amp; Selling Price</div>
+                  <input type="number" placeholder="Cost" value={vals.cost_price||''} onChange={e=>setField(key,'cost_price',e.target.value)}
+                    style={{ padding:'8px 10px', background:'#111827', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, outline:'none', width:'100%' }} />
+                  <input type="number" placeholder="Selling" value={vals.selling_price||''} onChange={e=>setField(key,'selling_price',e.target.value)}
+                    style={{ padding:'8px 10px', background:'#111827', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, outline:'none', width:'100%' }} />
+                  <Btn onClick={() => saveNew(u.supplier_name, u.shoe_id)} style={{ padding:'8px 16px', whiteSpace:'nowrap' }}>Set Price</Btn>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {data.unpriced.length === 0 && (
+        <div style={{ color:C.green, marginBottom:20, fontSize:14 }}>All shoe-supplier combinations are priced.</div>
+      )}
+
+      <Card>
+        <h3 style={{ color:C.amber, marginBottom:16, fontSize:16 }}>All Supplier Prices</h3>
+        {!data.prices.length && <p style={{ color:C.muted, fontSize:13 }}>No prices set yet.</p>}
+        {suppliers.map(supplier => (
+          <div key={supplier} style={{ marginBottom:20 }}>
+            <div style={{ color:C.cyan, fontWeight:700, fontSize:14, marginBottom:8, paddingBottom:6, borderBottom:`1px solid ${C.border}` }}>{supplier}</div>
+            {data.prices.filter(p => p.supplier_name === supplier).map(p => (
+              <div key={p.id} style={{ display:'grid', gridTemplateColumns:'1fr 180px 180px auto', gap:10, alignItems:'center', padding:'8px 12px', marginBottom:4, background:'#1f2937', borderRadius:6 }}>
+                <div>
+                  <span style={{ fontWeight:600 }}>{p.shoe_name}</span>
+                  {p.brand && <span style={{ color:C.muted, fontSize:12, marginLeft:8 }}>{p.brand}</span>}
+                </div>
+                {editId === p.id ? (
+                  <>
+                    <input type="number" value={editForm.cost_price} onChange={e=>setEditForm(f=>({...f,cost_price:e.target.value}))}
+                      placeholder="Cost" style={{ padding:'6px 8px', background:'#111827', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, outline:'none' }} />
+                    <input type="number" value={editForm.selling_price} onChange={e=>setEditForm(f=>({...f,selling_price:e.target.value}))}
+                      placeholder="Selling" style={{ padding:'6px 8px', background:'#111827', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, outline:'none' }} />
+                    <div style={{ display:'flex', gap:6 }}>
+                      <Btn onClick={saveEdit} color={C.green} style={{ padding:'6px 12px', color:'#fff' }}>Save</Btn>
+                      <Btn onClick={() => setEditId(null)} color="#374151" style={{ padding:'6px 10px', color:C.text }}>✕</Btn>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize:13 }}>Cost: <span style={{ color:C.text, fontWeight:600 }}>{Rs(p.cost_price)}</span></div>
+                    <div style={{ fontSize:13 }}>Sell: <span style={{ color:C.green, fontWeight:600 }}>{Rs(p.selling_price)}</span></div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <Btn onClick={() => { setEditId(p.id); setEditForm({ cost_price: p.cost_price, selling_price: p.selling_price, supplier_name: p.supplier_name, shoe_id: p.shoe_id }); }} color={C.cyan} style={{ padding:'6px 10px', color:'#000' }}>Edit</Btn>
+                      <Btn onClick={() => del(p.id)} color={C.red} style={{ padding:'6px 10px' }}>Del</Btn>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
 // ── Main Owner Page ───────────────────────────────────────────────────────────
 export default function Owner() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState('dashboard');
+  const [unpricedCount, setUnpricedCount] = useState(0);
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(u => {
@@ -890,6 +1016,7 @@ export default function Owner() {
     { id:'shoes', label:'Shoes' },
     { id:'accessories', label:'Accessories' },
     { id:'stock-costs', label:'Stock Costs' },
+    { id:'supplier-pricing', label:'Supplier Pricing', badge: unpricedCount || null },
     { id:'credits', label:'Credits' },
     { id:'expenses', label:'Expenses' },
     { id:'cash-balance', label:'Cash Balance' },
@@ -903,7 +1030,10 @@ export default function Owner() {
         <div style={{ fontWeight:800, color:C.amber, fontSize:20, marginRight:20, padding:'16px 0', whiteSpace:'nowrap' }}>👟 JASS</div>
         <div style={{ display:'flex', gap:0, flex:1 }}>
           {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ padding:'16px 14px', background:'none', border:'none', color: tab===t.id ? C.amber : C.muted, borderBottom: tab===t.id ? `2px solid ${C.amber}` : '2px solid transparent', cursor:'pointer', fontWeight:600, fontSize:13, whiteSpace:'nowrap' }}>{t.label}</button>
+            <button key={t.id} onClick={() => setTab(t.id)} style={{ padding:'16px 14px', background:'none', border:'none', color: tab===t.id ? C.amber : C.muted, borderBottom: tab===t.id ? `2px solid ${C.amber}` : '2px solid transparent', cursor:'pointer', fontWeight:600, fontSize:13, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:4 }}>
+              {t.label}
+              {t.badge ? <span style={{ background:C.red, color:'#fff', borderRadius:10, fontSize:10, padding:'1px 6px', fontWeight:700 }}>{t.badge}</span> : null}
+            </button>
           ))}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginLeft:12 }}>
@@ -918,6 +1048,7 @@ export default function Owner() {
         {tab === 'shoes' && <ShoesTab />}
         {tab === 'accessories' && <AccessoriesTab />}
         {tab === 'stock-costs' && <StockCostsTab />}
+        {tab === 'supplier-pricing' && <SupplierPricingTab onUnpricedCountChange={setUnpricedCount} />}
         {tab === 'credits' && <CreditsTab />}
         {tab === 'expenses' && <ExpensesTab />}
         {tab === 'cash-balance' && <CashBalanceTab />}

@@ -19,14 +19,29 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { item_type = 'shoe', shoe_id, accessory_id, item_name, color = '', size, quantity, unit_cost = 0, direction = 'in', notes = '' } = req.body;
+    const { item_type = 'shoe', shoe_id, accessory_id, item_name, color = '', size, quantity, unit_cost = 0, direction = 'in', notes = '', supplier_name = '' } = req.body;
     if (!item_name?.trim()) return res.status(400).json({ error: 'Item name required' });
     if (!quantity || Number(quantity) <= 0) return res.status(400).json({ error: 'Quantity must be positive' });
 
+    // Auto-apply supplier price if known
+    let resolvedCost = Number(unit_cost);
+    let priceApplied = false;
+    if (item_type === 'shoe' && shoe_id && supplier_name.trim()) {
+      const sp = await db.queryOne(
+        'SELECT cost_price, selling_price FROM supplier_prices WHERE supplier_name=? AND shoe_id=?',
+        [supplier_name.trim(), Number(shoe_id)]
+      );
+      if (sp) {
+        resolvedCost = Number(sp.cost_price);
+        await db.run('UPDATE shoes SET cost_price=?, selling_price=? WHERE id=?', [sp.cost_price, sp.selling_price, Number(shoe_id)]);
+        priceApplied = true;
+      }
+    }
+
     await db.tx(async (tx) => {
       await tx.run(
-        'INSERT INTO stock_entries (item_type,shoe_id,accessory_id,item_name,color,size,quantity,unit_cost,direction,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-        [item_type, shoe_id || null, accessory_id || null, item_name.trim(), color, size || null, Number(quantity), Number(unit_cost), direction, notes, session.id]
+        'INSERT INTO stock_entries (item_type,shoe_id,accessory_id,item_name,color,size,quantity,unit_cost,direction,notes,supplier_name,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        [item_type, shoe_id || null, accessory_id || null, item_name.trim(), color, size || null, Number(quantity), resolvedCost, direction, notes, supplier_name.trim(), session.id]
       );
 
       if (item_type === 'shoe' && shoe_id && size) {
@@ -41,7 +56,7 @@ export default async function handler(req, res) {
       }
     });
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, priceApplied, needsPricing: item_type === 'shoe' && shoe_id && supplier_name.trim() && !priceApplied });
   }
 
   res.status(405).end();
