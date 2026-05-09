@@ -427,6 +427,93 @@ function CreditsTab() {
   );
 }
 
+// ── Shoes Tab (staff) ─────────────────────────────────────────────────────────
+function ShoesTab() {
+  const [shoes, setShoes] = useState([]);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ name:'', brand:'', category:'General', selling_price:'', notes:'', sizes:{} });
+  const [msg, setMsg] = useState('');
+  const [search, setSearch] = useState('');
+
+  const load = () => fetch('/api/shoes').then(r=>r.json()).then(setShoes);
+  useEffect(() => { load(); }, []);
+
+  async function save() {
+    if (!form.name.trim()) return setMsg('Name required');
+    const body = { ...form, selling_price: Number(form.selling_price)||0, sizes: Object.fromEntries(Object.entries(form.sizes).map(([k,v]) => [k, Number(v)||0])) };
+    const r = await fetch('/api/shoes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) return setMsg(data.error || 'Error');
+    setMsg('Added!'); setAdding(false); setForm({ name:'', brand:'', category:'General', selling_price:'', notes:'', sizes:{} }); load();
+  }
+
+  const CATEGORIES = ['Sports','Classic','Casual','Formal','Running','Kids','General'];
+  const filtered = shoes.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.brand?.toLowerCase().includes(search.toLowerCase()) || s.category?.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <h2 style={{ color:C.amber, fontSize:22 }}>Shoes</h2>
+        <Btn onClick={() => { setAdding(a => !a); setMsg(''); }}>+ Add Shoe</Btn>
+      </div>
+
+      {adding && (
+        <Card style={{ marginBottom:20, border:`1px solid ${C.amber}55` }}>
+          <h3 style={{ color:C.amber, marginBottom:16 }}>New Shoe</h3>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <Input label="Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
+            <Input label="Brand" value={form.brand} onChange={e=>setForm(f=>({...f,brand:e.target.value}))} />
+            <Select label="Category" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+              {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+            </Select>
+            <Input label="Selling Price" type="number" value={form.selling_price} onChange={e=>setForm(f=>({...f,selling_price:e.target.value}))} />
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <label style={{ display:'block', fontSize:11, color:C.muted, marginBottom:8, textTransform:'uppercase', letterSpacing:1 }}>Sizes (quantity)</label>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+              {SIZES.map(sz => (
+                <div key={sz} style={{ textAlign:'center' }}>
+                  <div style={{ fontSize:11, color:C.muted, marginBottom:2 }}>{sz}</div>
+                  <input type="number" min="0" value={form.sizes[sz]||''} onChange={e=>setForm(f=>({...f,sizes:{...f.sizes,[sz]:e.target.value}}))}
+                    style={{ width:52, padding:'6px', background:'#1f2937', border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontSize:13, textAlign:'center', outline:'none' }} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <Input label="Notes" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} />
+          {msg && <p style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn onClick={save}>Save</Btn>
+            <Btn onClick={() => { setAdding(false); setMsg(''); }} color="#374151" style={{ color:C.text }}>Cancel</Btn>
+          </div>
+        </Card>
+      )}
+
+      <Input label="Search" value={search} onChange={e=>setSearch(e.target.value)} style={{ maxWidth:320, marginBottom:16 }} />
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
+        {filtered.map(shoe => (
+          <Card key={shoe.id}>
+            <div style={{ fontWeight:700, color:C.amber, fontSize:15, marginBottom:2 }}>{shoe.name}</div>
+            {shoe.brand && <div style={{ fontSize:12, color:C.muted, marginBottom:2 }}>{shoe.brand}</div>}
+            <div style={{ fontSize:12, color:C.cyan, marginBottom:8 }}>{shoe.category}</div>
+            <div style={{ fontWeight:700, fontSize:16, marginBottom:8 }}>{Rs(shoe.selling_price)}</div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>Total stock: {shoe.total_stock} pairs</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+              {SIZES.filter(sz => Number(shoe.sizes?.[sz]) > 0).map(sz => (
+                <span key={sz} style={{ padding:'2px 8px', background: Number(shoe.sizes[sz]) <= 2 ? '#ef444422' : '#f59e0b22', color: Number(shoe.sizes[sz]) <= 2 ? C.red : C.amber, borderRadius:4, fontSize:12, border:`1px solid ${Number(shoe.sizes[sz]) <= 2 ? '#ef444444' : '#f59e0b44'}` }}>
+                  {sz}: {shoe.sizes[sz]}
+                </span>
+              ))}
+              {SIZES.every(sz => !Number(shoe.sizes?.[sz])) && <span style={{ fontSize:12, color:C.red }}>Out of stock</span>}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function Staff() {
   const router = useRouter();
@@ -450,6 +537,7 @@ export default function Staff() {
 
   const tabs = [
     { id:'sale', label:'Sale' },
+    { id:'shoes', label:'Shoes' },
     { id:'stock', label:'Stock' },
     { id:'returns', label:'Returns' },
     { id:'expenses', label:'Expenses' },
@@ -473,6 +561,7 @@ export default function Staff() {
 
       <div style={{ padding:24 }}>
         {tab === 'sale' && <SaleTab user={user} />}
+        {tab === 'shoes' && <ShoesTab />}
         {tab === 'stock' && <StockTab />}
         {tab === 'returns' && <ReturnsTab />}
         {tab === 'expenses' && <ExpensesTab />}
