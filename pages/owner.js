@@ -9,6 +9,7 @@ const C = {
 const Rs = n => `Rs ${Number(n || 0).toLocaleString()}`;
 const SIZES = [35,36,37,38,39,40,41,42,43,44,45];
 const CATEGORIES = ['Sports','Classic','Casual','Formal','Running','Kids','General'];
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const PAYMENT = ['Cash','Bank','eSewa Pranis','eSewa Saharsh','eSewa Sulav'];
 
 function Btn({ onClick, children, color = C.amber, style = {}, disabled = false }) {
@@ -135,114 +136,144 @@ function DashboardTab() {
 
 // ── Analytics Tab ─────────────────────────────────────────────────────────────
 function AnalyticsTab() {
-  const [period, setPeriod] = useState('month');
+  const curYear = new Date().getFullYear().toString();
   const [data, setData] = useState(null);
-  const nowYM = new Date().toISOString().slice(0,7);
-  const nowY = new Date().getFullYear().toString();
-  const [month, setMonth] = useState(nowYM);
-  const [year, setYear] = useState(nowY);
+  const [year, setYear] = useState(curYear);
+  const [view, setView] = useState('monthly');
+  const [cat, setCat] = useState('all');
 
   useEffect(() => {
-    const url = period === 'month' ? `/api/analytics?period=month&month=${month}` : `/api/analytics?period=year&year=${year}`;
-    fetch(url).then(r=>r.json()).then(setData);
-  }, [period, month, year]);
+    setData(null);
+    fetch(`/api/analytics?year=${year}`).then(r=>r.json()).then(setData);
+  }, [year]);
 
   if (!data) return <p style={{ color:C.muted }}>Loading…</p>;
 
+  function buildMonthly() {
+    return data.shoes.map((row, i) => {
+      const ac = data.accessories[i];
+      if (cat === 'all') {
+        const grossProfit = row.profit + ac.profit;
+        const expenses = Number(data.expensesByMonth?.[i + 1] || 0);
+        return { label: MONTH_NAMES[i], revenue: row.revenue + ac.revenue, grossProfit, expenses, profit: grossProfit - expenses, count: row.count + ac.count };
+      }
+      if (cat === 'shoes') return { label: MONTH_NAMES[i], ...row };
+      return { label: MONTH_NAMES[i], ...ac };
+    });
+  }
+
+  function buildYearly() {
+    const allYears = [...new Set([
+      ...data.yearly.shoes.map(r => r.year),
+      ...data.yearly.accessories.map(r => r.year),
+    ])].sort((a, b) => b.localeCompare(a));
+    return allYears.map(yr => {
+      const s = data.yearly.shoes.find(r => r.year === yr) || { revenue: 0, profit: 0, count: 0 };
+      const a = data.yearly.accessories.find(r => r.year === yr) || { revenue: 0, profit: 0, count: 0 };
+      if (cat === 'all') {
+        const grossProfit = s.profit + a.profit;
+        const expenses = Number(data.yearly.expenses?.[yr] || 0);
+        return { label: yr, revenue: s.revenue + a.revenue, grossProfit, expenses, profit: grossProfit - expenses, count: s.count + a.count };
+      }
+      if (cat === 'shoes') return { label: yr, ...s };
+      return { label: yr, ...a };
+    });
+  }
+
+  const rows = view === 'monthly' ? buildMonthly() : buildYearly();
+  const total = rows.reduce((acc, r) => ({
+    revenue: acc.revenue + r.revenue,
+    grossProfit: acc.grossProfit + (r.grossProfit || 0),
+    expenses: acc.expenses + (r.expenses || 0),
+    profit: acc.profit + r.profit,
+    count: acc.count + r.count,
+  }), { revenue: 0, grossProfit: 0, expenses: 0, profit: 0, count: 0 });
+
+  const btnBase = { border:'none', borderRadius:8, cursor:'pointer', fontWeight:600, fontSize:13 };
+
   return (
     <div>
-      <div style={{ display:'flex', gap:12, alignItems:'center', marginBottom:24 }}>
-        <h2 style={{ color:C.amber, fontSize:22 }}>Analytics</h2>
-        <div style={{ display:'flex', gap:8 }}>
-          {['month','year'].map(p => (
-            <button key={p} onClick={() => setPeriod(p)} style={{ padding:'6px 16px', background: period===p ? C.amber : C.card, color: period===p ? '#000' : C.muted, border:`1px solid ${period===p ? C.amber : C.border}`, borderRadius:6, cursor:'pointer', fontWeight:600 }}>{p}</button>
-          ))}
-        </div>
-        {period === 'month' && <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={{ padding:'6px 10px', background:'#1f2937', border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:14 }} />}
-        {period === 'year' && <input type="number" value={year} onChange={e=>setYear(e.target.value)} min="2020" max="2035" style={{ padding:'6px 10px', background:'#1f2937', border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:14, width:100 }} />}
+      <h2 style={{ color:C.amber, fontSize:22, marginBottom:16 }}>Analytics</h2>
+
+      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+        {[['monthly','Monthly'],['yearly','All Years']].map(([v,lbl]) => (
+          <button key={v} onClick={() => setView(v)} style={{ ...btnBase, flex:1, padding:'8px 16px', background: view===v ? C.cyan : C.card, color: view===v ? '#000' : C.muted, border:`1px solid ${view===v ? C.cyan : C.border}` }}>{lbl}</button>
+        ))}
       </div>
 
-      {period === 'month' && data.shoes && (
-        <div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
-            <Card>
-              <h4 style={{ color:C.amber, marginBottom:12 }}>Shoe Sales — {month}</h4>
-              {data.shoes.map((s,i) => (
-                <div key={i} style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:8, marginBottom:8 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between' }}>
-                    <span style={{ fontWeight:600 }}>{s.name}</span>
-                    <span style={{ color:C.cyan }}>×{s.qty}</span>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:C.muted, marginTop:2 }}>
-                    <span>Revenue: {Rs(s.revenue)}</span>
-                    <span style={{ color:C.green }}>Profit: {Rs(s.profit)}</span>
-                  </div>
-                </div>
-              ))}
-              {!data.shoes.length && <p style={{ color:C.muted, fontSize:13 }}>No shoe sales</p>}
-            </Card>
-            <Card>
-              <h4 style={{ color:C.cyan, marginBottom:12 }}>Accessory Sales — {month}</h4>
-              {data.accessories.map((a,i) => (
-                <div key={i} style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:8, marginBottom:8 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between' }}>
-                    <span style={{ fontWeight:600 }}>{a.name}</span>
-                    <span style={{ color:C.cyan }}>×{a.qty}</span>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:C.muted, marginTop:2 }}>
-                    <span>Revenue: {Rs(a.revenue)}</span>
-                    <span style={{ color:C.green }}>Profit: {Rs(a.profit)}</span>
-                  </div>
-                </div>
-              ))}
-              {!data.accessories.length && <p style={{ color:C.muted, fontSize:13 }}>No accessory sales</p>}
-            </Card>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
-            <Stat label="Total Expenses" value={Rs(data.expenses)} color={C.red} />
-            <Stat label="Returns" value={Rs(data.returns?.revenue || 0)} color={C.red} />
-          </div>
+      {view === 'monthly' && (
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
+          {data.years.map(y => (
+            <button key={y} onClick={() => setYear(y)} style={{ ...btnBase, padding:'6px 16px', background: year===y ? C.purple : C.card, color: year===y ? '#fff' : C.muted, border:`1px solid ${year===y ? C.purple : C.border}` }}>{y}</button>
+          ))}
         </div>
       )}
 
-      {period === 'year' && data.monthly && (
-        <div>
-          <Card style={{ marginBottom:20 }}>
-            <h4 style={{ color:C.amber, marginBottom:12 }}>Monthly Revenue — {year}</h4>
-            {data.monthly.map((m,i) => (
-              <div key={i} style={{ display:'flex', justifyContent:'space-between', borderBottom:`1px solid ${C.border}`, paddingBottom:8, marginBottom:8 }}>
-                <span style={{ color:C.muted }}>{m.month}</span>
-                <span>Revenue: {Rs(m.revenue)}</span>
-                <span style={{ color:C.green }}>Profit: {Rs(m.profit)}</span>
-                <span style={{ color:C.cyan }}>{m.sales} sales</span>
-              </div>
-            ))}
-            {!data.monthly.length && <p style={{ color:C.muted, fontSize:13 }}>No data for {year}</p>}
-          </Card>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-            <Card>
-              <h4 style={{ color:C.amber, marginBottom:12 }}>Top Shoes — {year}</h4>
-              {data.shoes.map((s,i) => (
-                <div key={i} style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                  <span style={{ color:C.muted, flex:1 }}>{s.name}</span>
-                  <span style={{ color:C.cyan, marginRight:8 }}>×{s.qty}</span>
-                  <span style={{ fontWeight:700 }}>{Rs(s.revenue)}</span>
-                </div>
-              ))}
-            </Card>
-            <Card>
-              <h4 style={{ color:C.cyan, marginBottom:12 }}>Top Accessories — {year}</h4>
-              {data.accessories.map((a,i) => (
-                <div key={i} style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                  <span style={{ color:C.muted, flex:1 }}>{a.name}</span>
-                  <span style={{ color:C.cyan, marginRight:8 }}>×{a.qty}</span>
-                  <span style={{ fontWeight:700 }}>{Rs(a.revenue)}</span>
-                </div>
-              ))}
-            </Card>
-          </div>
+      <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+        {[['all','All'],['shoes','Shoes'],['accessories','Accessories']].map(([c,lbl]) => (
+          <button key={c} onClick={() => setCat(c)} style={{ ...btnBase, flex:1, padding:'8px', background: cat===c ? C.amber : C.card, color: cat===c ? '#000' : C.muted, border:`1px solid ${cat===c ? C.amber : C.border}` }}>{lbl}</button>
+        ))}
+      </div>
+
+      {cat === 'all' ? (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+          <Stat label="Revenue" value={Rs(total.revenue)} color={C.cyan} />
+          <Stat label="Gross Profit" value={Rs(total.grossProfit)} color={C.green} />
+          <Stat label="Expenses" value={Rs(total.expenses)} color={C.red} />
+          <Stat label="Net Profit" value={Rs(total.profit)} color={total.profit >= 0 ? C.green : C.red} />
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:16 }}>
+          <Stat label="Revenue" value={Rs(total.revenue)} color={C.cyan} />
+          <Stat label="Profit" value={Rs(total.profit)} color={C.green} />
+          <Stat label="Sales" value={total.count} color={C.amber} />
         </div>
       )}
+
+      <Card style={{ padding:0, overflow:'hidden' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+          <thead>
+            <tr style={{ borderBottom:`1px solid ${C.border}`, background:'rgba(255,255,255,0.03)' }}>
+              <th style={{ padding:'10px 12px', textAlign:'left', color:C.muted, fontWeight:700, fontSize:11 }}>{view === 'monthly' ? 'MONTH' : 'YEAR'}</th>
+              <th style={{ padding:'10px 8px', textAlign:'right', color:C.muted, fontWeight:700, fontSize:11 }}>REVENUE</th>
+              <th style={{ padding:'10px 8px', textAlign:'right', color:C.muted, fontWeight:700, fontSize:11 }}>{cat === 'all' ? 'NET' : 'PROFIT'}</th>
+              <th style={{ padding:'10px 10px', textAlign:'right', color:C.muted, fontWeight:700, fontSize:11 }}>{cat === 'all' ? 'EXP' : 'SALES'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => {
+              const isEmpty = row.revenue === 0 && (cat === 'all' ? row.grossProfit === 0 : row.count === 0);
+              return (
+                <tr key={row.label} style={{ borderBottom:`1px solid ${C.border}`, opacity: isEmpty ? 0.35 : 1 }}>
+                  <td style={{ padding:'9px 12px', fontWeight:600 }}>{row.label}</td>
+                  <td style={{ padding:'9px 8px', textAlign:'right', color:C.cyan, fontWeight:600 }}>{row.revenue > 0 ? Rs(row.revenue) : '—'}</td>
+                  <td style={{ padding:'9px 8px', textAlign:'right', fontWeight:600, color: row.profit > 0 ? C.green : row.profit < 0 ? C.red : C.muted }}>
+                    {row.profit !== 0 ? Rs(row.profit) : '—'}
+                    {cat === 'all' && row.grossProfit > 0 && <div style={{ fontSize:10, color:C.muted, fontWeight:400 }}>g: {Number(row.grossProfit).toLocaleString()}</div>}
+                  </td>
+                  <td style={{ padding:'9px 10px', textAlign:'right', fontSize:12 }}>
+                    {cat === 'all' ? (row.expenses > 0 ? <span style={{ color:C.red }}>{Number(row.expenses).toLocaleString()}</span> : '—') : (row.count > 0 ? row.count : '—')}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr style={{ background:'rgba(0,212,255,0.08)', borderTop:`2px solid ${C.border}` }}>
+              <td style={{ padding:'11px 12px', fontWeight:800, fontSize:13 }}>TOTAL</td>
+              <td style={{ padding:'11px 8px', textAlign:'right', color:C.cyan, fontWeight:800 }}>{Rs(total.revenue)}</td>
+              <td style={{ padding:'11px 8px', textAlign:'right', color:C.green, fontWeight:800 }}>
+                {Rs(total.profit)}
+                {cat === 'all' && total.grossProfit > 0 && <div style={{ fontSize:10, color:C.muted, fontWeight:400 }}>g: {Number(total.grossProfit).toLocaleString()}</div>}
+              </td>
+              <td style={{ padding:'11px 10px', textAlign:'right', fontWeight:800 }}>
+                {cat === 'all' ? <span style={{ color:C.red }}>{Number(total.expenses).toLocaleString()}</span> : <span style={{ color:C.amber }}>{total.count}</span>}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </Card>
+      {cat === 'all' && <p style={{ fontSize:11, color:C.muted, marginTop:8 }}>NET = Gross Profit minus Expenses. EXP = total expenses. "g:" = gross before deduction.</p>}
     </div>
   );
 }
@@ -282,6 +313,7 @@ function ShoesTab() {
 
   async function save() {
     if (!form.name.trim()) return setMsg('Name required');
+    if (!form.brand.trim()) return setMsg('Brand required');
     const validVariants = variants.filter(v => v.size && Number(v.qty) >= 0).map(v => ({ color: v.color||'', size: Number(v.size), qty: Number(v.qty) }));
     const url = adding ? '/api/shoes' : `/api/shoes/${editing}`;
     const method = adding ? 'POST' : 'PUT';
@@ -312,7 +344,7 @@ function ShoesTab() {
           <h3 style={{ color:C.amber, marginBottom:16 }}>{adding ? 'New Shoe' : 'Edit Shoe'}</h3>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
             <Input label="Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
-            <Input label="Brand" value={form.brand} onChange={e=>setForm(f=>({...f,brand:e.target.value}))} />
+            <Input label="Brand *" value={form.brand} onChange={e=>setForm(f=>({...f,brand:e.target.value}))} />
             <Sel label="Category" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
               {CATEGORIES.map(c=><option key={c}>{c}</option>)}
             </Sel>

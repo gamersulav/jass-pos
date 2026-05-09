@@ -515,6 +515,7 @@ function ShoesTab() {
 
   async function save() {
     if (!form.name.trim()) return setMsg('Name required');
+    if (!form.brand.trim()) return setMsg('Brand required');
     const validVariants = variants.filter(v => v.size && Number(v.qty) > 0).map(v => ({ color: v.color||'', size: Number(v.size), qty: Number(v.qty) }));
     const body = { ...form, selling_price: Number(form.selling_price)||0, variants: validVariants };
     const r = await fetch('/api/shoes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -537,7 +538,7 @@ function ShoesTab() {
           <h3 style={{ color:C.amber, marginBottom:16 }}>New Shoe</h3>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
             <Input label="Name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
-            <Input label="Brand" value={form.brand} onChange={e=>setForm(f=>({...f,brand:e.target.value}))} />
+            <Input label="Brand *" value={form.brand} onChange={e=>setForm(f=>({...f,brand:e.target.value}))} />
             <Select label="Category" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
               {SHOE_CATEGORIES.map(c=><option key={c}>{c}</option>)}
             </Select>

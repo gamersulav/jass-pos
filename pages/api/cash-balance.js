@@ -10,7 +10,7 @@ function prevDateStr(dateStr) {
 }
 
 async function computeClosingForDate(db, date, depth = 0) {
-  const [openRows, saleRows, repairRows, expRow, suppRow] = await Promise.all([
+  const [openRows, saleRows, expenseRows, suppRow] = await Promise.all([
     db.query(`SELECT payment_method, amount, COALESCE(adjustment,0) as adjustment FROM cash_opening WHERE date=?`, [date]),
     db.query(`
       SELECT s.payment_method, COALESCE(SUM(s.total_amount),0) as total
@@ -39,7 +39,7 @@ async function computeClosingForDate(db, date, depth = 0) {
   }
 
   saleRows.forEach(r => { if (METHODS.includes(r.payment_method)) sales[r.payment_method] = Number(r.total); });
-  expRow.forEach(r => { if (METHODS.includes(r.payment_method)) expByMethod[r.payment_method] = Number(r.total); });
+  expenseRows.forEach(r => { if (METHODS.includes(r.payment_method)) expByMethod[r.payment_method] = Number(r.total); });
   const supplier = Number(suppRow?.total || 0);
 
   const closing = {};

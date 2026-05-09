@@ -28,6 +28,7 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { name, brand = '', category = 'General', cost_price = 0, selling_price = 0, notes = '', variants = [] } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+    if (!brand?.trim()) return res.status(400).json({ error: 'Brand required' });
 
     const { lastId } = await db.run(
       'INSERT INTO shoes (name,brand,category,cost_price,selling_price,notes,created_by) VALUES (?,?,?,?,?,?,?)',
