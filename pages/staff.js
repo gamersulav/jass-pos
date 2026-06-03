@@ -295,6 +295,7 @@ function StockTab() {
     const acc = form.item_type === 'accessory' ? accessories.find(a => a.id === Number(form.accessory_id)) : null;
     const item_name = shoe ? shoe.name : acc ? acc.name : '';
     if (!item_name) return showToast('Select an item', 'error');
+    if (form.item_type === 'shoe' && !form.color.trim()) return showToast('Color is required', 'error');
     if (form.item_type === 'shoe' && !form.size) return showToast('Select a size', 'error');
 
     const r = await fetch('/api/stock', { method:'POST', headers:{'Content-Type':'application/json'},
@@ -360,7 +361,7 @@ function StockTab() {
               <option value="">Select shoe</option>
               {shoes.map(s => <option key={s.id} value={s.id}>{s.name}{s.brand ? ` - ${s.brand}` : ''}</option>)}
             </Select>
-            <Input label="Color (optional)" value={form.color} onChange={e=>setForm(f=>({...f,color:e.target.value,size:''}))} placeholder="e.g. Red, Black, White" />
+            <Input label="Color *" value={form.color} onChange={e=>setForm(f=>({...f,color:e.target.value,size:''}))} placeholder="e.g. Red, Black, White" style={{ borderColor: !form.color.trim() ? C.red : undefined }} />
             <Select label="Size" value={form.size} onChange={e=>setForm(f=>({...f,size:e.target.value}))}>
               <option value="">Select size</option>
               {SIZES.map(sz => <option key={sz} value={sz}>Size {sz}{curColorStock[sz] ? ` (${curColorStock[sz]} in stock)` : ''}</option>)}

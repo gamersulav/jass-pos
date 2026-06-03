@@ -22,6 +22,7 @@ export default async function handler(req, res) {
     const { item_type = 'shoe', shoe_id, accessory_id, item_name, color = '', size, quantity, unit_cost = 0, direction = 'in', notes = '', supplier_name = '' } = req.body;
     if (!item_name?.trim()) return res.status(400).json({ error: 'Item name required' });
     if (!quantity || Number(quantity) <= 0) return res.status(400).json({ error: 'Quantity must be positive' });
+    if (item_type === 'shoe' && !color?.trim()) return res.status(400).json({ error: 'Color is required for shoes' });
 
     // Auto-apply supplier price if known
     let resolvedCost = Number(unit_cost);
