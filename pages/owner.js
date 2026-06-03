@@ -56,13 +56,19 @@ function Stat({ label, value, sub, color = C.amber }) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
+function pctChange(curr, prev) {
+  if (!prev) return null;
+  const diff = ((curr - prev) / prev) * 100;
+  return { diff, up: diff >= 0 };
+}
+
 function DashboardTab() {
   const [data, setData] = useState(null);
 
   useEffect(() => { fetch('/api/dashboard').then(r=>r.json()).then(setData); }, []);
   if (!data) return <p style={{ color:C.muted }}>Loading…</p>;
 
-  const { today, monthly, payments, topShoes, topAccessories, stockLow, pendingCredits } = data;
+  const { today, monthly, lastMonth, payments, topShoes, topAccessories, stockLow, pendingCredits } = data;
 
   return (
     <div>
@@ -86,6 +92,35 @@ function DashboardTab() {
         <Stat label="Margin" value={`${monthly.margin.toFixed(1)}%`} color={C.purple} />
         <Stat label="Sales" value={monthly.sales} color={C.cyan} />
       </div>
+
+      {lastMonth && (() => {
+        const items = [
+          { label:'Revenue', curr: monthly.revenue, prev: lastMonth.revenue },
+          { label:'Net Profit', curr: monthly.profit, prev: lastMonth.profit },
+          { label:'Sales', curr: monthly.sales, prev: lastMonth.sales, isCount: true },
+        ];
+        return (
+          <div style={{ marginBottom:24 }}>
+            <h3 style={{ color:C.muted, fontSize:13, textTransform:'uppercase', letterSpacing:2, marginBottom:12 }}>vs Last Month</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+              {items.map(({ label, curr, prev, isCount }) => {
+                const pc = pctChange(curr, prev);
+                return (
+                  <Card key={label}>
+                    <div style={{ fontSize:11, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:4 }}>{label}</div>
+                    <div style={{ fontSize:18, fontWeight:800 }}>{isCount ? curr : Rs(curr)}</div>
+                    {pc !== null && (
+                      <div style={{ fontSize:12, marginTop:4, color: pc.up ? C.green : C.red }}>
+                        {pc.up ? '▲' : '▼'} {Math.abs(pc.diff).toFixed(1)}% vs {isCount ? prev : Rs(prev)}
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:20 }}>
         <Card>
@@ -136,7 +171,7 @@ function DashboardTab() {
 
 // ── Analytics Tab ─────────────────────────────────────────────────────────────
 function AnalyticsTab() {
-  const curYear = new Date().getFullYear().toString();
+  const curYear = new Date(Date.now() + 5*3600000 + 45*60000).getFullYear().toString();
   const [data, setData] = useState(null);
   const [year, setYear] = useState(curYear);
   const [view, setView] = useState('monthly');
@@ -274,6 +309,14 @@ function AnalyticsTab() {
         </table>
       </Card>
       {cat === 'all' && <p style={{ fontSize:11, color:C.muted, marginTop:8 }}>NET = Gross Profit minus Expenses. EXP = total expenses. "g:" = gross before deduction.</p>}
+
+      <div style={{ display:'flex', gap:8, marginTop:16, flexWrap:'wrap' }}>
+        {[['sales','Sales'],['expenses','Expenses'],['stock','Stock']].map(([type,lbl]) => (
+          <a key={type} href={`/api/export?type=${type}`} download style={{ padding:'7px 16px', background:C.card, border:`1px solid ${C.amber}`, borderRadius:20, color:C.amber, textDecoration:'none', fontSize:13, fontWeight:600 }}>
+            ⬇ {lbl}
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -557,7 +600,7 @@ function CreditsTab() {
 // ── Expenses Tab ──────────────────────────────────────────────────────────────
 function ExpensesTab() {
   const [expenses, setExpenses] = useState([]);
-  const [date, setDate] = useState(new Date().toISOString().slice(0,10));
+  const [date, setDate] = useState(new Date(Date.now() + 5*3600000 + 45*60000).toISOString().slice(0,10));
   const [form, setForm] = useState({ description:'', amount:'', payment_method:'Cash' });
   const [msg, setMsg] = useState('');
 
@@ -624,7 +667,7 @@ function ExpensesTab() {
 // ── Cash Balance Tab ──────────────────────────────────────────────────────────
 function CashBalanceTab() {
   const [data, setData] = useState(null);
-  const [date, setDate] = useState(new Date().toISOString().slice(0,10));
+  const [date, setDate] = useState(new Date(Date.now() + 5*3600000 + 45*60000).toISOString().slice(0,10));
   const [openingEdit, setOpeningEdit] = useState({});
   const [adjEdit, setAdjEdit] = useState({});
   const [msg, setMsg] = useState('');

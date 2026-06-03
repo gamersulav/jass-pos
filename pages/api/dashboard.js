@@ -12,7 +12,9 @@ export default async function handler(req, res) {
 
   const db = await getDb();
 
-  const [today, monthlyRev, todayProfit, monthlyProfit, todayReturns, monthlyReturns, todayExp, monthlyExp, payments, topShoes, topAccessories, stockLow, pendingCredits] = await Promise.all([
+  const NPT_LAST_MONTH = "strftime('%Y-%m', 'now', '+5 hours', '+45 minutes', '-1 month')";
+
+  const [today, monthlyRev, todayProfit, monthlyProfit, todayReturns, monthlyReturns, todayExp, monthlyExp, lmSales, lmProfit, lmExp, payments, topShoes, topAccessories, stockLow, pendingCredits] = await Promise.all([
     db.queryOne(`SELECT COALESCE(SUM(total_amount),0) as revenue, COUNT(*) as sales FROM sales WHERE ${nptDate('created_at')}=${NPT_TODAY}`),
     db.queryOne(`SELECT COALESCE(SUM(total_amount),0) as revenue, COUNT(*) as sales FROM sales WHERE ${nptMonth('created_at')}=${NPT_MONTH}`),
     db.queryOne(`SELECT COALESCE(SUM(si.quantity*(si.unit_price-si.cost_price)-COALESCE(si.item_discount,0)),0) as profit FROM sales s JOIN sale_items si ON si.sale_id=s.id WHERE ${nptDate('s.created_at')}=${NPT_TODAY}`),
@@ -21,6 +23,9 @@ export default async function handler(req, res) {
     db.queryOne(`SELECT COALESCE(SUM(return_amount),0) as revenue, COALESCE(SUM(return_profit),0) as profit FROM sales_returns WHERE ${nptMonth('created_at')}=${NPT_MONTH}`),
     db.queryOne(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE expense_date=${NPT_TODAY}`),
     db.queryOne(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE ${nptMonth('expense_date')}=${NPT_MONTH}`),
+    db.queryOne(`SELECT COALESCE(SUM(total_amount),0) as revenue, COUNT(*) as sales FROM sales WHERE ${nptMonth('created_at')}=${NPT_LAST_MONTH}`),
+    db.queryOne(`SELECT COALESCE(SUM(si.quantity*(si.unit_price-si.cost_price)-COALESCE(si.item_discount,0)),0) as profit FROM sales s JOIN sale_items si ON si.sale_id=s.id WHERE ${nptMonth('s.created_at')}=${NPT_LAST_MONTH}`),
+    db.queryOne(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE ${nptMonth('expense_date')}=${NPT_LAST_MONTH}`),
     db.query(`SELECT payment_method as method, COUNT(*) as count, SUM(total_amount) as total FROM sales WHERE ${nptDate('created_at')}=${NPT_TODAY} GROUP BY payment_method ORDER BY total DESC`),
     db.query(`
       SELECT si.item_name as name, SUM(si.quantity) as qty,
@@ -47,6 +52,9 @@ export default async function handler(req, res) {
   const monthPro = Number(monthlyProfit?.profit || 0) - Number(monthlyReturns?.profit || 0);
   const todayExpTotal = Number(todayExp?.total || 0);
   const monthExpTotal = Number(monthlyExp?.total || 0);
+  const lmRev = Number(lmSales?.revenue || 0);
+  const lmPro = Number(lmProfit?.profit || 0);
+  const lmExpTotal = Number(lmExp?.total || 0);
 
   res.json({
     today: {
@@ -63,6 +71,11 @@ export default async function handler(req, res) {
       profit: monthPro - monthExpTotal,
       sales: Number(monthlyRev?.sales || 0),
       margin: monthRev > 0 ? ((monthPro - monthExpTotal) / monthRev) * 100 : 0,
+    },
+    lastMonth: {
+      revenue: lmRev,
+      profit: lmPro - lmExpTotal,
+      sales: Number(lmSales?.sales || 0),
     },
     payments,
     topShoes,

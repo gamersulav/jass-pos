@@ -1,6 +1,35 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 
+// ── Toast ──────────────────────────────────────────────────────────────────────
+let _showToast = null;
+function showToast(msg, type = 'success') { _showToast?.(msg, type); }
+
+function Toast() {
+  const [toasts, setToasts] = useState([]);
+  useEffect(() => {
+    _showToast = (msg, type) => {
+      const id = Date.now();
+      setToasts(p => [...p, { id, msg, type }]);
+      setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500);
+    };
+    return () => { _showToast = null; };
+  }, []);
+  if (!toasts.length) return null;
+  return (
+    <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:9999, display:'flex', flexDirection:'column', gap:8, minWidth:280, maxWidth:360 }}>
+      {toasts.map(t => (
+        <div key={t.id} style={{ padding:'12px 16px', borderRadius:10, fontWeight:600, fontSize:14, textAlign:'center',
+          background: t.type==='error' ? '#450a0a' : t.type==='warn' ? '#451a03' : '#052e16',
+          color:      t.type==='error' ? '#fca5a5' : t.type==='warn' ? '#fde68a' : '#86efac',
+          border:     `1px solid ${t.type==='error' ? '#7f1d1d' : t.type==='warn' ? '#78350f' : '#14532d'}`,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+        }}>{t.msg}</div>
+      ))}
+    </div>
+  );
+}
+
 const C = {
   bg: '#0a0a1a', card: '#111827', border: '#1f2937',
   amber: '#f59e0b', cyan: '#00d4ff', text: '#e2e8f0',
@@ -51,12 +80,12 @@ function SaleTab({ user }) {
   const [payment, setPayment] = useState('Cash');
   const [discount, setDiscount] = useState('');
   const [creditCustomer, setCreditCustomer] = useState('');
+  const [creditPhone, setCreditPhone] = useState('');
   const [search, setSearch] = useState('');
   const [accSearch, setAccSearch] = useState('');
   const [selColor, setSelColor] = useState({});
   const [selSize, setSelSize] = useState({});
   const [activeTab, setActiveTab] = useState('shoes');
-  const [msg, setMsg] = useState('');
 
   const reload = () => {
     fetch('/api/shoes').then(r=>r.json()).then(setShoes);
@@ -69,25 +98,23 @@ function SaleTab({ user }) {
     if (!qty) return;
     const existing = cart.findIndex(c => c.shoe_id === shoe.id && c.shoe_color === color && c.shoe_size === size);
     if (existing >= 0) {
-      if (cart[existing].quantity >= qty) return setMsg('Not enough stock');
+      if (cart[existing].quantity >= qty) return showToast('Not enough stock', 'error');
       setCart(c => c.map((it,i) => i===existing ? {...it, quantity: it.quantity+1} : it));
     } else {
       const colorLabel = color ? ` [${color}]` : '';
       setCart(c => [...c, { item_type:'shoe', shoe_id:shoe.id, shoe_color:color, shoe_size:size, accessory_id:null, item_name:`${shoe.name}${shoe.brand?' - '+shoe.brand:''}${colorLabel} (sz ${size})`, quantity:1, unit_price: shoe.selling_price, cost_price: shoe.cost_price||0 }]);
     }
-    setMsg('');
   }
 
   function addAcc(acc) {
-    if (!acc.stock) return setMsg('Out of stock');
+    if (!acc.stock) return showToast('Out of stock', 'error');
     const existing = cart.findIndex(c => c.accessory_id === acc.id);
     if (existing >= 0) {
-      if (cart[existing].quantity >= acc.stock) return setMsg('Not enough stock');
+      if (cart[existing].quantity >= acc.stock) return showToast('Not enough stock', 'error');
       setCart(c => c.map((it,i) => i===existing ? {...it, quantity:it.quantity+1} : it));
     } else {
       setCart(c => [...c, { item_type:'accessory', shoe_id:null, shoe_color:'', shoe_size:null, accessory_id:acc.id, item_name:acc.name, quantity:1, unit_price:acc.selling_price, cost_price:acc.cost_price||0 }]);
     }
-    setMsg('');
   }
 
   function removeItem(i) { setCart(c => c.filter((_,idx) => idx!==i)); }
@@ -97,13 +124,14 @@ function SaleTab({ user }) {
   const total = subtotal - disc;
 
   async function checkout() {
-    if (!cart.length) return setMsg('Cart is empty');
-    if (payment === 'Credit' && !creditCustomer.trim()) return setMsg('Credit customer name required');
-    const r = await fetch('/api/sales', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ payment, items: cart, discount: disc, creditCustomer }) });
+    if (!cart.length) return showToast('Cart is empty', 'error');
+    if (payment === 'Credit' && !creditCustomer.trim()) return showToast('Customer name required for credit', 'error');
+    if (payment === 'Credit' && !creditPhone.trim()) return showToast('Phone number required for credit', 'error');
+    const r = await fetch('/api/sales', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ payment, items: cart, discount: disc, creditCustomer, creditPhone }) });
     const data = await r.json();
-    if (!r.ok) return setMsg(data.error || 'Error');
-    setCart([]); setDiscount(''); setCreditCustomer(''); setSelColor({}); setSelSize({});
-    setMsg(`Sale #${data.saleId} completed!`);
+    if (!r.ok) return showToast(data.error || 'Error', 'error');
+    setCart([]); setDiscount(''); setCreditCustomer(''); setCreditPhone(''); setSelColor({}); setSelSize({});
+    showToast(`Sale #${data.saleId} completed!`);
     reload();
   }
 
@@ -125,7 +153,7 @@ function SaleTab({ user }) {
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(230px,1fr))', gap:12 }}>
               {filteredShoes.map(shoe => {
                 const availColors = Object.keys(shoe.colors || {}).filter(c => Object.values(shoe.colors[c]).some(q => Number(q) > 0));
-                const curColor = selColor[shoe.id] || '';
+                const curColor = availColors.length === 1 ? availColors[0] : (selColor[shoe.id] || '');
                 const sizesForColor = shoe.colors?.[curColor] || {};
                 return (
                   <Card key={shoe.id}>
@@ -161,7 +189,9 @@ function SaleTab({ user }) {
                   <div style={{ fontWeight:700, color:C.cyan, marginBottom:2 }}>{acc.name}</div>
                   <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>{acc.category}</div>
                   <div style={{ fontWeight:700, marginBottom:4 }}>{Rs(acc.selling_price)}</div>
-                  <div style={{ fontSize:12, color: acc.stock > 5 ? C.green : acc.stock > 0 ? C.amber : C.red, marginBottom:8 }}>Stock: {acc.stock}</div>
+                  <div style={{ fontSize:12, color: acc.stock > 2 ? C.green : acc.stock > 0 ? C.amber : C.red, marginBottom:4 }}>Stock: {acc.stock}{acc.stock <= 2 && acc.stock > 0 ? ' ⚠' : ''}</div>
+                  {acc.stock === 0 && <div style={{ fontSize:11, fontWeight:700, color:C.red, marginBottom:4 }}>OUT OF STOCK</div>}
+                  {acc.stock > 0 && acc.stock <= 2 && <div style={{ fontSize:11, fontWeight:700, color:C.amber, marginBottom:4 }}>LOW STOCK</div>}
                   <Btn onClick={() => addAcc(acc)} disabled={!acc.stock} style={{ width:'100%' }} color={C.cyan}>Add</Btn>
                 </Card>
               ))}
@@ -193,7 +223,12 @@ function SaleTab({ user }) {
           <Select label="Payment" value={payment} onChange={e=>setPayment(e.target.value)}>
             {PAYMENT.map(p => <option key={p}>{p}</option>)}
           </Select>
-          {payment === 'Credit' && <Input label="Customer Name" value={creditCustomer} onChange={e=>setCreditCustomer(e.target.value)} />}
+          {payment === 'Credit' && (
+            <>
+              <Input label="Customer Name *" value={creditCustomer} onChange={e=>setCreditCustomer(e.target.value)} style={{ borderColor: !creditCustomer.trim() ? C.red : undefined }} />
+              <Input label="Phone Number *" type="tel" value={creditPhone} onChange={e=>setCreditPhone(e.target.value)} style={{ borderColor: !creditPhone.trim() ? C.red : undefined }} />
+            </>
+          )}
 
           <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:12, marginTop:4 }}>
             {disc > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, color:C.muted, marginBottom:4 }}><span>Discount</span><span style={{ color:C.red }}>- {Rs(disc)}</span></div>}
@@ -202,7 +237,6 @@ function SaleTab({ user }) {
             </div>
           </div>
 
-          {msg && <p style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, marginTop:8 }}>{msg}</p>}
           <Btn onClick={checkout} style={{ width:'100%', padding:'12px', fontSize:15, marginTop:12 }}>Complete Sale</Btn>
         </div>
       </Card>
@@ -218,7 +252,6 @@ function StockTab() {
   const [knownSuppliers, setKnownSuppliers] = useState([]);
   const [supplierPrice, setSupplierPrice] = useState(null);
   const [form, setForm] = useState({ item_type:'shoe', shoe_id:'', accessory_id:'', color:'', size:'', quantity:'', notes:'', supplier_name:'' });
-  const [msg, setMsg] = useState('');
 
   useEffect(() => {
     fetch('/api/shoes').then(r=>r.json()).then(setShoes);
@@ -240,25 +273,25 @@ function StockTab() {
   }, [form.shoe_id, form.supplier_name, form.item_type]);
 
   async function addStock() {
-    if (!form.quantity || Number(form.quantity) <= 0) return setMsg('Enter valid quantity');
-    if (form.item_type === 'shoe' && !form.supplier_name.trim()) return setMsg('Supplier name required');
+    if (!form.quantity || Number(form.quantity) <= 0) return showToast('Enter valid quantity', 'error');
+    if (form.item_type === 'shoe' && !form.supplier_name.trim()) return showToast('Supplier name required', 'error');
     const shoe = form.item_type === 'shoe' ? shoes.find(s => s.id === Number(form.shoe_id)) : null;
     const acc = form.item_type === 'accessory' ? accessories.find(a => a.id === Number(form.accessory_id)) : null;
     const item_name = shoe ? shoe.name : acc ? acc.name : '';
-    if (!item_name) return setMsg('Select an item');
-    if (form.item_type === 'shoe' && !form.size) return setMsg('Select a size');
+    if (!item_name) return showToast('Select an item', 'error');
+    if (form.item_type === 'shoe' && !form.size) return showToast('Select a size', 'error');
 
     const r = await fetch('/api/stock', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ ...form, shoe_id: form.shoe_id ? Number(form.shoe_id) : null, accessory_id: form.accessory_id ? Number(form.accessory_id) : null, color: form.color || '', size: form.size ? Number(form.size) : null, quantity: Number(form.quantity), item_name, direction:'in' }) });
     const data = await r.json();
-    if (!r.ok) return setMsg(data.error || 'Error');
+    if (!r.ok) return showToast(data.error || 'Error', 'error');
 
     if (data.needsPricing) {
-      setMsg('Stock added! ⚠️ Owner needs to set price for this supplier.');
+      showToast('Stock added! Owner needs to set price for this supplier.', 'warn');
     } else if (data.priceApplied) {
-      setMsg('Stock added! Price auto-applied from supplier.');
+      showToast('Stock added! Price auto-applied from supplier.');
     } else {
-      setMsg('Stock added!');
+      showToast('Stock added!');
     }
 
     setForm(f => ({ ...f, quantity:'', notes:'', size:'' }));
@@ -325,7 +358,6 @@ function StockTab() {
         )}
         <Input label="Quantity" type="number" value={form.quantity} onChange={e=>setForm(f=>({...f,quantity:e.target.value}))} />
         <Input label="Notes" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} />
-        {msg && <p style={{ color: msg.includes('⚠️') ? C.amber : msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
         <Btn onClick={addStock} style={{ width:'100%' }}>Add Stock</Btn>
       </Card>
 
@@ -355,17 +387,16 @@ function StockTab() {
 function ReturnsTab() {
   const [returns, setReturns] = useState([]);
   const [form, setForm] = useState({ sale_id:'', item_name:'', quantity:'1', return_amount:'', return_profit:'', reason:'' });
-  const [msg, setMsg] = useState('');
 
   useEffect(() => { fetch('/api/returns').then(r=>r.json()).then(setReturns); }, []);
 
   async function submit() {
-    if (!form.item_name || !form.return_amount) return setMsg('Fill required fields');
+    if (!form.item_name || !form.return_amount) return showToast('Fill required fields', 'error');
     const r = await fetch('/api/returns', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ ...form, quantity: Number(form.quantity), return_amount: Number(form.return_amount), return_profit: Number(form.return_profit)||0, sale_id: form.sale_id ? Number(form.sale_id) : null }) });
     const data = await r.json();
-    if (!r.ok) return setMsg(data.error || 'Error');
-    setMsg('Return recorded!');
+    if (!r.ok) return showToast(data.error || 'Error', 'error');
+    showToast('Return recorded!');
     setForm({ sale_id:'', item_name:'', quantity:'1', return_amount:'', return_profit:'', reason:'' });
     fetch('/api/returns').then(r=>r.json()).then(setReturns);
   }
@@ -380,7 +411,6 @@ function ReturnsTab() {
         <Input label="Return Amount *" type="number" value={form.return_amount} onChange={e=>setForm(f=>({...f,return_amount:e.target.value}))} />
         <Input label="Return Profit" type="number" value={form.return_profit} onChange={e=>setForm(f=>({...f,return_profit:e.target.value}))} />
         <Input label="Reason" value={form.reason} onChange={e=>setForm(f=>({...f,reason:e.target.value}))} />
-        {msg && <p style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
         <Btn onClick={submit} style={{ width:'100%' }}>Record Return</Btn>
       </Card>
       <div>
@@ -404,16 +434,15 @@ function ReturnsTab() {
 function ExpensesTab() {
   const [expenses, setExpenses] = useState([]);
   const [form, setForm] = useState({ description:'', amount:'', payment_method:'Cash' });
-  const [msg, setMsg] = useState('');
 
   useEffect(() => { fetch('/api/expenses').then(r=>r.json()).then(setExpenses); }, []);
 
   async function add() {
-    if (!form.description || !form.amount) return setMsg('Fill required fields');
+    if (!form.description || !form.amount) return showToast('Fill required fields', 'error');
     const r = await fetch('/api/expenses', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...form, amount: Number(form.amount) }) });
     const data = await r.json();
-    if (!r.ok) return setMsg(data.error || 'Error');
-    setMsg('Added!'); setForm({ description:'', amount:'', payment_method:'Cash' });
+    if (!r.ok) return showToast(data.error || 'Error', 'error');
+    showToast('Expense added!'); setForm({ description:'', amount:'', payment_method:'Cash' });
     fetch('/api/expenses').then(r=>r.json()).then(setExpenses);
   }
 
@@ -427,7 +456,6 @@ function ExpensesTab() {
         <Select label="Payment Method" value={form.payment_method} onChange={e=>setForm(f=>({...f,payment_method:e.target.value}))}>
           {['Cash','Bank','eSewa Pranis','eSewa Saharsh','eSewa Sulav'].map(p=><option key={p}>{p}</option>)}
         </Select>
-        {msg && <p style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
         <Btn onClick={add} style={{ width:'100%' }}>Add Expense</Btn>
       </Card>
       <div>
@@ -503,7 +531,6 @@ function ShoesTab() {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name:'', brand:'', category:'General', selling_price:'', notes:'' });
   const [variants, setVariants] = useState([{ color:'', size:'', qty:'' }]);
-  const [msg, setMsg] = useState('');
   const [search, setSearch] = useState('');
 
   const load = () => fetch('/api/shoes').then(r=>r.json()).then(setShoes);
@@ -514,14 +541,14 @@ function ShoesTab() {
   function removeVariantRow(i) { setVariants(v => v.filter((_,j) => j!==i)); }
 
   async function save() {
-    if (!form.name.trim()) return setMsg('Name required');
-    if (!form.brand.trim()) return setMsg('Brand required');
+    if (!form.name.trim()) return showToast('Name required', 'error');
+    if (!form.brand.trim()) return showToast('Brand required', 'error');
     const validVariants = variants.filter(v => v.size && Number(v.qty) > 0).map(v => ({ color: v.color||'', size: Number(v.size), qty: Number(v.qty) }));
     const body = { ...form, selling_price: Number(form.selling_price)||0, variants: validVariants };
     const r = await fetch('/api/shoes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await r.json();
-    if (!r.ok) return setMsg(data.error || 'Error');
-    setMsg('Added!'); setAdding(false); setForm({ name:'', brand:'', category:'General', selling_price:'', notes:'' }); setVariants([{ color:'', size:'', qty:'' }]); load();
+    if (!r.ok) return showToast(data.error || 'Error', 'error');
+    showToast('Shoe added!'); setAdding(false); setForm({ name:'', brand:'', category:'General', selling_price:'', notes:'' }); setVariants([{ color:'', size:'', qty:'' }]); load();
   }
 
   const filtered = shoes.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.brand?.toLowerCase().includes(search.toLowerCase()) || s.category?.toLowerCase().includes(search.toLowerCase()));
@@ -530,7 +557,7 @@ function ShoesTab() {
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
         <h2 style={{ color:C.amber, fontSize:22 }}>Shoes</h2>
-        <Btn onClick={() => { setAdding(a => !a); setMsg(''); }}>+ Add Shoe</Btn>
+        <Btn onClick={() => setAdding(a => !a)}>+ Add Shoe</Btn>
       </div>
 
       {adding && (
@@ -565,10 +592,9 @@ function ShoesTab() {
             ))}
           </div>
           <Input label="Notes" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} />
-          {msg && <p style={{ color: msg.includes('!') ? C.green : C.red, fontSize:13, marginBottom:8 }}>{msg}</p>}
           <div style={{ display:'flex', gap:8 }}>
             <Btn onClick={save}>Save</Btn>
-            <Btn onClick={() => { setAdding(false); setMsg(''); }} color="#374151" style={{ color:C.text }}>Cancel</Btn>
+            <Btn onClick={() => { setAdding(false); }} color="#374151" style={{ color:C.text }}>Cancel</Btn>
           </div>
         </Card>
       )}
@@ -638,6 +664,7 @@ export default function Staff() {
 
   return (
     <div style={{ minHeight:'100vh', background:C.bg }}>
+      <Toast />
       <div style={{ background:C.card, borderBottom:`1px solid ${C.border}`, padding:'0 24px', display:'flex', alignItems:'center', gap:0 }}>
         <div style={{ fontWeight:800, color:C.amber, fontSize:20, marginRight:24, padding:'16px 0' }}>👟 JASS</div>
         <div style={{ display:'flex', gap:4, flex:1 }}>
