@@ -30,9 +30,12 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { payment, items, discount = 0, creditCustomer = '', creditPhone = '' } = req.body;
+    const { payment, items, discount = 0, creditCustomer = '', creditPhone = '', customerName = '', customerCount = 1, channel = '' } = req.body;
     if (!payment) return res.status(400).json({ error: 'Payment method required' });
     if (!items?.length) return res.status(400).json({ error: 'No items' });
+    if (!customerName.trim()) return res.status(400).json({ error: 'Customer name required' });
+    if (!Number(customerCount) || Number(customerCount) < 1) return res.status(400).json({ error: 'Number of customers required' });
+    if (!channel || !['outlet', 'online'].includes(channel)) return res.status(400).json({ error: 'Channel (outlet/online) required' });
     if (payment === 'Credit' && !creditCustomer.trim()) return res.status(400).json({ error: 'Customer name required for credit' });
     if (payment === 'Credit' && !creditPhone.trim()) return res.status(400).json({ error: 'Phone number required for credit' });
 
@@ -53,8 +56,8 @@ export default async function handler(req, res) {
 
     const saleId = await db.tx(async (tx) => {
       const { lastId } = await tx.run(
-        'INSERT INTO sales (payment_method,total_amount,discount_amount,credit_customer,credit_customer_phone,user_id) VALUES (?,?,?,?,?,?)',
-        [payment, saleTotal, discAmt, payment === 'Credit' ? creditCustomer : '', payment === 'Credit' ? creditPhone : '', session.id]
+        'INSERT INTO sales (payment_method,total_amount,discount_amount,credit_customer,credit_customer_phone,customer_name,customer_count,channel,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
+        [payment, saleTotal, discAmt, payment === 'Credit' ? creditCustomer : '', payment === 'Credit' ? creditPhone : '', customerName.trim(), Number(customerCount), channel, session.id]
       );
 
       // Distribute discount proportionally

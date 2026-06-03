@@ -37,7 +37,7 @@ const C = {
 };
 const Rs = n => `Rs ${Number(n || 0).toLocaleString()}`;
 const SIZES = [35,36,37,38,39,40,41,42,43,44,45];
-const PAYMENT = ['Cash','Bank','eSewa Pranis','eSewa Saharsh','eSewa Sulav','Credit'];
+const PAYMENT = ['Cash','Bank','eSewa Pranis','eSewa Saharsh','eSewa Sulav','NCM','Credit'];
 
 function Btn({ onClick, children, color = C.amber, style = {}, disabled = false }) {
   return (
@@ -81,6 +81,9 @@ function SaleTab({ user }) {
   const [discount, setDiscount] = useState('');
   const [creditCustomer, setCreditCustomer] = useState('');
   const [creditPhone, setCreditPhone] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerCount, setCustomerCount] = useState('1');
+  const [channel, setChannel] = useState('');
   const [search, setSearch] = useState('');
   const [accSearch, setAccSearch] = useState('');
   const [selColor, setSelColor] = useState({});
@@ -125,12 +128,15 @@ function SaleTab({ user }) {
 
   async function checkout() {
     if (!cart.length) return showToast('Cart is empty', 'error');
+    if (!customerName.trim()) return showToast('Customer name required', 'error');
+    if (!customerCount || Number(customerCount) < 1) return showToast('Number of customers required', 'error');
+    if (!channel) return showToast('Select outlet or online', 'error');
     if (payment === 'Credit' && !creditCustomer.trim()) return showToast('Customer name required for credit', 'error');
     if (payment === 'Credit' && !creditPhone.trim()) return showToast('Phone number required for credit', 'error');
-    const r = await fetch('/api/sales', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ payment, items: cart, discount: disc, creditCustomer, creditPhone }) });
+    const r = await fetch('/api/sales', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ payment, items: cart, discount: disc, creditCustomer, creditPhone, customerName, customerCount: Number(customerCount), channel }) });
     const data = await r.json();
     if (!r.ok) return showToast(data.error || 'Error', 'error');
-    setCart([]); setDiscount(''); setCreditCustomer(''); setCreditPhone(''); setSelColor({}); setSelSize({});
+    setCart([]); setDiscount(''); setCreditCustomer(''); setCreditPhone(''); setCustomerName(''); setCustomerCount('1'); setChannel(''); setSelColor({}); setSelSize({});
     showToast(`Sale #${data.saleId} completed!`);
     reload();
   }
@@ -219,6 +225,16 @@ function SaleTab({ user }) {
         ))}
 
         <div style={{ marginTop:16 }}>
+          <Input label="Customer Name *" value={customerName} onChange={e=>setCustomerName(e.target.value)} style={{ borderColor: !customerName.trim() ? C.red : undefined }} />
+          <Input label="No. of Customers *" type="number" min="1" value={customerCount} onChange={e=>setCustomerCount(e.target.value)} style={{ borderColor: !customerCount || Number(customerCount) < 1 ? C.red : undefined }} />
+          <div style={{ marginBottom:12 }}>
+            <label style={{ display:'block', fontSize:11, color:C.muted, marginBottom:6, textTransform:'uppercase', letterSpacing:1 }}>Channel *</label>
+            <div style={{ display:'flex', gap:8 }}>
+              {['outlet','online'].map(ch => (
+                <button key={ch} onClick={() => setChannel(ch)} style={{ flex:1, padding:'9px 0', background: channel===ch ? (ch==='outlet' ? C.amber : C.cyan) : '#1f2937', color: channel===ch ? '#000' : C.muted, border:`1px solid ${channel===ch ? (ch==='outlet' ? C.amber : C.cyan) : C.border}`, borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:13, textTransform:'capitalize' }}>{ch}</button>
+              ))}
+            </div>
+          </div>
           <Input label="Discount (Rs)" type="number" value={discount} onChange={e=>setDiscount(e.target.value)} />
           <Select label="Payment" value={payment} onChange={e=>setPayment(e.target.value)}>
             {PAYMENT.map(p => <option key={p}>{p}</option>)}
