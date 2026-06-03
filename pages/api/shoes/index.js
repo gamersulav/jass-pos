@@ -9,18 +9,31 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const shoes = await db.query(`
-      SELECT s.*,
-        GROUP_CONCAT(ss.color || '~' || ss.size || '~' || ss.quantity ORDER BY ss.color, ss.size) as sizes_raw,
-        COALESCE(SUM(ss.quantity), 0) as total_stock
+      SELECT s.*, COALESCE(SUM(ss.quantity), 0) as total_stock
       FROM shoes s
       LEFT JOIN shoe_sizes ss ON ss.shoe_id = s.id
       WHERE s.active = 1
       GROUP BY s.id
-      ORDER BY s.name
+      ORDER BY s.created_at DESC
     `);
+
+    const allSizes = shoes.length > 0
+      ? await db.query(
+          `SELECT shoe_id, color, size, quantity FROM shoe_sizes WHERE shoe_id IN (${shoes.map(() => '?').join(',')}) AND quantity > 0`,
+          shoes.map(s => Number(s.id))
+        )
+      : [];
+
+    const sizesMap = {};
+    allSizes.forEach(ss => {
+      if (!sizesMap[ss.shoe_id]) sizesMap[ss.shoe_id] = {};
+      if (!sizesMap[ss.shoe_id][ss.color]) sizesMap[ss.shoe_id][ss.color] = {};
+      sizesMap[ss.shoe_id][ss.color][ss.size] = ss.quantity;
+    });
+
     return res.json(shoes.map(s => ({
       ...s,
-      colors: parseSizesRaw(s.sizes_raw),
+      colors: sizesMap[s.id] || {},
       cost_price: session.role === 'owner' ? s.cost_price : undefined,
     })));
   }
@@ -48,19 +61,4 @@ export default async function handler(req, res) {
   }
 
   res.status(405).end();
-}
-
-function parseSizesRaw(raw) {
-  if (!raw) return {};
-  const colors = {};
-  raw.split(',').forEach(p => {
-    const parts = p.split('~');
-    if (parts.length < 3) return;
-    const color = parts[0];
-    const size = parts[1];
-    const qty = Number(parts[2]);
-    if (!colors[color]) colors[color] = {};
-    colors[color][size] = qty;
-  });
-  return colors;
 }

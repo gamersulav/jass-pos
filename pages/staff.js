@@ -88,8 +88,8 @@ function SaleTab({ user }) {
   const [activeTab, setActiveTab] = useState('shoes');
 
   const reload = () => {
-    fetch('/api/shoes').then(r=>r.json()).then(setShoes);
-    fetch('/api/accessories').then(r=>r.json()).then(setAccessories);
+    fetch('/api/shoes').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(setShoes).catch(() => showToast('Failed to load shoes', 'error'));
+    fetch('/api/accessories').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(setAccessories).catch(() => {});
   };
   useEffect(() => { reload(); }, []);
 
@@ -533,7 +533,7 @@ function ShoesTab() {
   const [variants, setVariants] = useState([{ color:'', size:'', qty:'' }]);
   const [search, setSearch] = useState('');
 
-  const load = () => fetch('/api/shoes').then(r=>r.json()).then(setShoes);
+  const load = () => fetch('/api/shoes').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(setShoes).catch(e => showToast('Failed to load shoes: ' + e.message, 'error'));
   useEffect(() => { load(); }, []);
 
   function updateVariant(i, field, val) { setVariants(v => v.map((r,j) => j===i ? {...r,[field]:val} : r)); }
@@ -544,6 +544,7 @@ function ShoesTab() {
     if (!form.name.trim()) return showToast('Name required', 'error');
     if (!form.brand.trim()) return showToast('Brand required', 'error');
     const validVariants = variants.filter(v => v.size && Number(v.qty) > 0).map(v => ({ color: v.color||'', size: Number(v.size), qty: Number(v.qty) }));
+    if (!validVariants.length) return showToast('Add at least one size with quantity > 0', 'error');
     const body = { ...form, selling_price: Number(form.selling_price)||0, variants: validVariants };
     const r = await fetch('/api/shoes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await r.json();

@@ -330,7 +330,7 @@ function ShoesTab() {
   const [variants, setVariants] = useState([{ color:'', size:'', qty:'' }]);
   const [msg, setMsg] = useState('');
 
-  const load = () => fetch('/api/shoes').then(r=>r.json()).then(setShoes);
+  const load = () => fetch('/api/shoes').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(setShoes).catch(e => setMsg('Failed to load shoes: ' + e.message));
   useEffect(() => { load(); }, []);
 
   function updateVariant(i, field, val) { setVariants(v => v.map((r,j) => j===i ? {...r,[field]:val} : r)); }
